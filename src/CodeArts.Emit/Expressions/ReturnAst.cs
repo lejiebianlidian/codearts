@@ -10,12 +10,19 @@ namespace CodeArts.Emit.Expressions
     [DebuggerDisplay("return {body}")]
     public class ReturnAst : AstExpression
     {
+        private sealed class AnyDynamic { }
+
+        /// <summary>
+        /// 任意动态类型。
+        /// </summary>
+        private static readonly Type AnyDynamicType = typeof(AnyDynamic);
+
         private readonly AstExpression body;
 
         /// <summary>
         /// 构造函数。
         /// </summary>
-        public ReturnAst() : base(typeof(void)) { }
+        public ReturnAst() : base(AnyDynamicType) => IsEmpty = true;
 
         /// <summary>
         /// 构造函数。
@@ -30,6 +37,11 @@ namespace CodeArts.Emit.Expressions
                 throw new ArgumentException("不能返回无返回值类型!", nameof(body));
             }
         }
+
+        /// <summary>
+        /// 未设置返回结果。
+        /// </summary>
+        public bool IsEmpty { get; }
 
         /// <summary>
         /// 生成。

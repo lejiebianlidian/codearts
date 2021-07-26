@@ -73,13 +73,43 @@ namespace CodeArts.Emit.Expressions
 
             IsLastReturn = false;
 
-            if (code is ReturnAst)
+            if (code is ReturnAst returnAst)
             {
                 HasReturn = true;
 
                 IsLastReturn = true;
 
-                if (RuntimeType != code.RuntimeType)
+                if (returnAst.IsEmpty)
+                {
+                    if (IsEmpty)
+                    {
+                        if (RuntimeType == typeof(void))
+                        {
+                            goto label_core;
+                        }
+
+                        throw new AstException("堆载顶部无任何数据!");
+                    }
+
+#if NETSTANDARD2_1_OR_GREATER
+                    AstExpression lastCode = codes[^1];
+#else
+                    AstExpression lastCode = codes[codes.Count - 1];
+#endif
+
+                    if (lastCode is ReturnAst)
+                    {
+                        return this;
+                    }
+
+                    if (lastCode.RuntimeType == RuntimeType || RuntimeType == typeof(void) || lastCode.RuntimeType.IsAssignableFrom(RuntimeType))
+                    {
+                        goto label_core;
+                    }
+
+                    throw new AstException($"返回类型“{lastCode.RuntimeType}”和预期的返回类型“{RuntimeType}”不相同!");
+                }
+                else if (RuntimeType != code.RuntimeType)
                 {
                     throw new AstException($"返回类型“{code.RuntimeType}”和预期的返回类型“{RuntimeType}”不相同!");
                 }
@@ -88,10 +118,8 @@ namespace CodeArts.Emit.Expressions
             {
                 blockAst.isReadOnly = true;
             }
-            else if (code is InvocationAst && code.RuntimeType == typeof(object))
-            {
-                code = Convert(code, RuntimeType);
-            }
+
+        label_core:
 
             codes.Add(code);
 
