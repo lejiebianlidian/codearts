@@ -70,6 +70,61 @@ namespace CodeArts.Emit
 #endif
         }
 
+        private static bool EqualSignatureTypes(Type t1, Type t2)
+        {
+            if (t1.IsGenericParameter != t2.IsGenericParameter)
+            {
+                return false;
+            }
+            
+            if (t1.IsGenericType != t2.IsGenericType)
+            {
+                return false;
+            }
+
+            if (t1.IsGenericParameter)
+            {
+                if (t1.GenericParameterPosition != t2.GenericParameterPosition)
+                {
+                    return false;
+                }
+            }
+            else if (t1.IsGenericType)
+            {
+                var xGenericTypeDef = t1.GetGenericTypeDefinition();
+                var yGenericTypeDef = t2.GetGenericTypeDefinition();
+
+                if (xGenericTypeDef != yGenericTypeDef)
+                {
+                    return false;
+                }
+
+                var xArgs = t1.GetGenericArguments();
+                var yArgs = t2.GetGenericArguments();
+
+                if (xArgs.Length != yArgs.Length)
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < xArgs.Length; ++i)
+                {
+                    if (!EqualSignatureTypes(xArgs[i], yArgs[i]))
+                    {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                if (!t1.Equals(t2))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         private static bool IsDelegate(Type t)
         {
             return t.IsSubclassOf(typeof(MulticastDelegate));
@@ -1009,6 +1064,11 @@ namespace CodeArts.Emit
         public static void EmitConvertToType(ILGenerator ilg, Type typeFrom, Type typeTo, bool isChecked = true)
         {
             if (AreEquivalent(typeFrom, typeTo))
+            {
+                return;
+            }
+
+            if (EqualSignatureTypes(typeFrom, typeTo))
             {
                 return;
             }

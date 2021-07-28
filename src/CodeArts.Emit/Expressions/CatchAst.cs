@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection.Emit;
 
@@ -27,8 +26,21 @@ namespace CodeArts.Emit.Expressions
         private readonly Type exceptionType;
         private readonly VariableAst variable;
 
-        private readonly List<AstExpression> codes = new List<AstExpression>();
-        private readonly List<VariableAst> variables = new List<VariableAst>();
+        /// <summary>
+        /// 构造函数。
+        /// </summary>
+        /// <param name="catchAst">异常模块。</param>
+        protected CatchAst(CatchAst catchAst) : base(catchAst?.RuntimeType)
+        {
+            if (catchAst is null)
+            {
+                throw new ArgumentNullException(nameof(catchAst));
+            }
+
+            body = catchAst.body;
+            variable = catchAst.variable;
+            exceptionType = catchAst.exceptionType;
+        }
 
         /// <summary>
         /// 构造函数。
@@ -64,30 +76,26 @@ namespace CodeArts.Emit.Expressions
         {
             this.body = body ?? throw new ArgumentNullException(nameof(body));
 
-            if (body is ReturnAst || body is BlockAst blockAst && blockAst.HasReturn)
-            {
-                throw new AstException("捕获异常的表达式会将结果推到堆上，不能写返回！");
-            }
-
             this.exceptionType = exceptionType ?? throw new ArgumentNullException(nameof(exceptionType));
-            this.variable = variable;
+
+            if (variable is null || variable.RuntimeType == exceptionType)
+            {
+                this.variable = variable;
+            }
+            else
+            {
+                throw new AstException($"变量类型“{variable.RuntimeType}”和异常类型“{exceptionType}”不一致!");
+            }
         }
 
         /// <summary>
-        /// 声明变量。
+        /// 发行。
         /// </summary>
-        /// <param name="variableType">变量类型。</param>
-        /// <returns></returns>
-        public VariableAst DeclareVariable(Type variableType)
+        /// <param name="ilg">指令。</param>
+        /// <param name="body">内容。</param>
+        protected virtual void Emit(ILGenerator ilg, AstExpression body)
         {
-            if (variableType is null)
-            {
-                throw new ArgumentNullException(nameof(variableType));
-            }
-
-            var variable = new VariableAst(variableType);
-            variables.Add(variable);
-            return variable;
+            body.Load(ilg);
         }
 
         /// <summary>
@@ -107,7 +115,7 @@ namespace CodeArts.Emit.Expressions
 
             ilg.Emit(OpCodes.Nop);
 
-            body.Load(ilg);
+            Emit(ilg, body);
         }
     }
 }

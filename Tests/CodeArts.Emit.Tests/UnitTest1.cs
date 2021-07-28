@@ -138,12 +138,17 @@ namespace CodeArts.Emit.Tests
                 intercept.Run(context);
             }
 
-            public override Task RunAsync(InterceptAsyncContext context, InterceptAsync intercept)
+            public override T Run<T>(InterceptContext context, Intercept<T> intercept)
+            {
+                return intercept.Run(context);
+            }
+
+            public override Task RunAsync(InterceptContext context, InterceptAsync intercept)
             {
                 return intercept.RunAsync(context);
             }
 
-            public override Task<T> RunAsync<T>(InterceptAsyncContext context, InterceptAsync<T> intercept)
+            public override Task<T> RunAsync<T>(InterceptContext context, InterceptAsync<T> intercept)
             {
                 return intercept.RunAsync(context);
             }

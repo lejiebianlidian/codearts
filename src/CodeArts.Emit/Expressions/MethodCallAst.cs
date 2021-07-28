@@ -39,7 +39,10 @@ namespace CodeArts.Emit.Expressions
                 }
             }
 
-            var parameterInfos = methodInfo.GetParameters();
+            var parameterInfos = methodInfo.IsGenericMethod
+                ? methodInfo.GetGenericMethodDefinition()
+                    .GetParameters()
+                : methodInfo.GetParameters();
 
             if (arguments.Length != parameterInfos.Length)
             {

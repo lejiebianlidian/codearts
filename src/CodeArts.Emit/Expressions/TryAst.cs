@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Reflection.Emit;
 
 namespace CodeArts.Emit.Expressions
@@ -9,11 +8,65 @@ namespace CodeArts.Emit.Expressions
     /// <summary>
     /// 捕获异常。
     /// </summary>
-    [DebuggerDisplay("try { {body} }")]
+    [DebuggerDisplay("try \\{ {body} \\}")]
     public class TryAst : BlockAst
     {
-        private readonly List<CatchAst> catchAsts = new List<CatchAst>();
-        private readonly List<FinallyAst> finallyAsts = new List<FinallyAst>();
+        private static readonly Label EmptyLabel = default;
+
+        private readonly List<CatchAst> catchAsts;
+        private readonly List<FinallyAst> finallyAsts;
+
+        private class VBlockAst : BlockAst
+        {
+            private readonly LocalBuilder variable;
+            private readonly Label label;
+
+            public VBlockAst(LocalBuilder variable, Label label, BlockAst blockAst) : base(blockAst)
+            {
+                this.variable = variable;
+                this.label = label;
+            }
+
+            protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
+        }
+
+        private class VCatchAst : CatchAst
+        {
+            private readonly LocalBuilder variable;
+            private readonly Label label;
+
+            public VCatchAst(LocalBuilder variable, Label label, CatchAst catchAst) : base(catchAst)
+            {
+                this.variable = variable;
+                this.label = label;
+            }
+
+            protected override void Emit(ILGenerator ilg, AstExpression body)
+            {
+                if (body is ReturnAst returnAst)
+                {
+                    base.Emit(ilg, returnAst.OnlyBodyAst());
+                }
+                else if (body is BlockAst blockAst)
+                {
+                    base.Emit(ilg, new VBlockAst(variable, label, blockAst));
+                }
+                else
+                {
+                    base.Emit(ilg, body);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 构造函数。
+        /// </summary>
+        /// <param name="tryAst">异常捕获。</param>
+        protected TryAst(TryAst tryAst) : base(tryAst)
+        {
+            catchAsts = tryAst.catchAsts;
+            finallyAsts = tryAst.finallyAsts;
+        }
 
         /// <summary>
         /// 构造函数。
@@ -21,6 +74,8 @@ namespace CodeArts.Emit.Expressions
         /// <param name="returnType">返回结果。</param>
         public TryAst(Type returnType) : base(returnType)
         {
+            catchAsts = new List<CatchAst>();
+            finallyAsts = new List<FinallyAst>();
         }
 
         /// <summary>
@@ -55,6 +110,105 @@ namespace CodeArts.Emit.Expressions
         }
 
         /// <summary>
+        /// 发行变量和代码块(无返回值)。
+        /// </summary>
+        /// <param name="ilg">指令。</param>
+        protected override void EmitVoid(ILGenerator ilg)
+        {
+            ilg.BeginExceptionBlock();
+
+            base.EmitVoid(ilg);
+
+            if (catchAsts.Count > 0)
+            {
+                foreach (var item in catchAsts)
+                {
+                    item.Load(ilg);
+                }
+            }
+
+            if (finallyAsts.Count > 0)
+            {
+                ilg.BeginFinallyBlock();
+
+                ilg.Emit(OpCodes.Nop);
+
+                foreach (var item in finallyAsts)
+                {
+                    item.Load(ilg);
+                }
+
+                ilg.Emit(OpCodes.Nop);
+            }
+
+            ilg.EndExceptionBlock();
+        }
+
+        /// <summary>
+        /// 发行变量和代码块（有返回值）。
+        /// </summary>
+        /// <param name="ilg">指令。</param>
+        /// <param name="variable">存储结果的变量。</param>
+        /// <param name="label"></param>
+        protected override void Emit(ILGenerator ilg, LocalBuilder variable, Label label)
+        {
+            var labelCatch = ilg.DefineLabel();
+
+            ilg.BeginExceptionBlock();
+
+            base.Emit(ilg, variable, labelCatch);
+
+            if (catchAsts.Count > 0)
+            {
+                ilg.Emit(OpCodes.Nop);
+
+                foreach (var catchAst in catchAsts)
+                {
+                    new VCatchAst(variable, labelCatch, catchAst)
+                        .Load(ilg);
+                }
+
+                ilg.Emit(OpCodes.Nop);
+            }
+
+            ilg.MarkLabel(labelCatch);
+
+            if (finallyAsts.Count > 0)
+            {
+                ilg.BeginFinallyBlock();
+
+                ilg.Emit(OpCodes.Nop);
+
+                foreach (var item in finallyAsts)
+                {
+                    item.Load(ilg);
+                }
+
+                ilg.Emit(OpCodes.Nop);
+            }
+
+            ilg.EndExceptionBlock();
+
+            if (label != EmptyLabel)
+            {
+                ilg.Emit(OpCodes.Leave_S, label);
+            }
+        }
+
+        /// <summary>
+        /// 发行（有返回值）。
+        /// </summary>
+        /// <param name="ilg">指令。</param>
+        protected override void Emit(ILGenerator ilg)
+        {
+            var variable = ilg.DeclareLocal(RuntimeType);
+
+            Emit(ilg, variable, EmptyLabel);
+
+            ilg.Emit(OpCodes.Ldloc, variable);
+        }
+
+        /// <summary>
         /// 生成。
         /// </summary>
         /// <param name="ilg">指令。</param>
@@ -65,82 +219,7 @@ namespace CodeArts.Emit.Expressions
                 throw new AstException("表达式残缺，未设置捕获代码块或最终执行代码块！");
             }
 
-            ilg.BeginExceptionBlock();
-
             base.Load(ilg);
-
-            if (HasReturn)
-            {
-                throw new AstException("表达式会将结果推到堆上，不能写返回！");
-            }
-
-            if (RuntimeType == typeof(void))
-            {
-                if (catchAsts.Count > 0)
-                {
-                    foreach (var item in catchAsts)
-                    {
-                        item.Load(ilg);
-                    }
-                }
-
-                if (finallyAsts.Count > 0)
-                {
-                    ilg.BeginFinallyBlock();
-
-                    ilg.Emit(OpCodes.Nop);
-
-                    foreach (var item in finallyAsts)
-                    {
-                        item.Load(ilg);
-                    }
-
-                    ilg.Emit(OpCodes.Nop);
-                }
-
-                ilg.EndExceptionBlock();
-            }
-            else
-            {
-                var variable = ilg.DeclareLocal(RuntimeType);
-
-                ilg.Emit(OpCodes.Stloc, variable);
-
-                if (catchAsts.Count > 0)
-                {
-                    ilg.Emit(OpCodes.Nop);
-
-                    foreach (var item in catchAsts)
-                    {
-                        item.Load(ilg);
-
-                        if (RuntimeType.IsAssignableFrom(item.RuntimeType))
-                        {
-                            ilg.Emit(OpCodes.Stloc, variable);
-                        }
-                    }
-
-                    ilg.Emit(OpCodes.Nop);
-                }
-
-                if (finallyAsts.Count > 0)
-                {
-                    ilg.BeginFinallyBlock();
-
-                    ilg.Emit(OpCodes.Nop);
-
-                    foreach (var item in finallyAsts)
-                    {
-                        item.Load(ilg);
-                    }
-
-                    ilg.Emit(OpCodes.Nop);
-                }
-
-                ilg.EndExceptionBlock();
-
-                ilg.Emit(OpCodes.Ldloc, variable);
-            }
         }
     }
 }
