@@ -241,7 +241,7 @@ namespace CodeArts
 
             if (paramterEmitters.Any(x => x.RuntimeType.IsByRef))
             {
-                var finallyAst = Finally();
+                var finallyAst = Block(typeof(void));
 
                 for (int i = 0; i < paramterEmitters.Length; i++)
                 {

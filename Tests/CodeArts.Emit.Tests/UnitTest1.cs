@@ -204,7 +204,32 @@ namespace CodeArts.Emit.Tests
             [DependencyIntercept]
             public bool AopTestByOut(int i, out int j)
             {
-                j = i * 5;
+                switch (i)
+                {
+                    case 1:
+                        j = 5;
+                        break;
+                    case 2:
+                        j = 15;
+                        break;
+                    default:
+                        j = i * i * 5;
+                        break;
+                }
+
+                object value = i;
+
+                switch (value)
+                {
+                    case int i1:
+                        i = i1;
+                        break;
+                    case string text:
+                        i = 10;
+                        break;
+                    default:
+                        break;
+                }
 
                 return (i & 1) == 0;
             }

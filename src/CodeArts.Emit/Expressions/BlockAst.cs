@@ -13,7 +13,6 @@ namespace CodeArts.Emit.Expressions
         private readonly List<AstExpression> codes;
         private readonly List<VariableAst> variables;
 
-        //? 有返回值，并指定结果和跳转目标。
         private class VBlockAst : BlockAst
         {
             private readonly LocalBuilder variable;
@@ -26,6 +25,7 @@ namespace CodeArts.Emit.Expressions
             }
 
             protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
         }
 
         private class VTryAst : TryAst
@@ -40,6 +40,7 @@ namespace CodeArts.Emit.Expressions
             }
 
             protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
         }
 
         //? 忽略返回值。
@@ -76,12 +77,8 @@ namespace CodeArts.Emit.Expressions
         /// 代码块。
         /// </summary>
         /// <param name="blockAst"></param>
-        protected BlockAst(BlockAst blockAst) : base(blockAst?.RuntimeType)
+        protected BlockAst(BlockAst blockAst) : base(blockAst?.RuntimeType ?? throw new ArgumentNullException(nameof(blockAst)))
         {
-            if (blockAst is null)
-            {
-                throw new ArgumentNullException(nameof(blockAst));
-            }
             codes = blockAst.codes;
             variables = blockAst.variables;
             isReadOnly = blockAst.isReadOnly;
@@ -134,11 +131,6 @@ namespace CodeArts.Emit.Expressions
             if (isReadOnly)
             {
                 throw new AstException("当前代码块已作为其它代码块的一部分，不能进行修改!");
-            }
-
-            if (code is FinallyAst)
-            {
-                throw new AstException("表达式“FinallyAst”只能配合“TryAst”使用，不能单独使用!");
             }
 
             if (code is ReturnAst returnAst)

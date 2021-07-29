@@ -461,7 +461,7 @@ namespace CodeArts.Emit
         /// <param name="returnType">返回值。</param>
         /// <param name="finallyAst">一定会执行的代码。</param>
         /// <returns></returns>
-        public static TryAst Try(Type returnType, FinallyAst finallyAst) => new TryAst(returnType, finallyAst);
+        public static TryAst Try(Type returnType, AstExpression finallyAst) => new TryAst(returnType, finallyAst);
 
         /// <summary>
         /// 捕获任意异常。
@@ -494,12 +494,6 @@ namespace CodeArts.Emit
         /// <param name="variable">变量。</param>
         /// <returns></returns>
         public static CatchAst Catch(AstExpression body, Type exceptionType, VariableAst variable) => new CatchAst(body, exceptionType, variable);
-
-        /// <summary>
-        /// 始终执行的代码。
-        /// </summary>
-        /// <returns></returns>
-        public static FinallyAst Finally() => new FinallyAst();
 
         /// <summary>
         /// 字段。

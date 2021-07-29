@@ -11,7 +11,7 @@ namespace CodeArts.Emit.Expressions
     [DebuggerDisplay("try \\{ //TODO:somethings \\}")]
     public class TryAst : BlockAst
     {
-        private readonly FinallyAst finallyAst;
+        private readonly AstExpression finallyAst;
         private readonly List<CatchAst> catchAsts;
 
         private class VBlockAst : BlockAst
@@ -26,6 +26,21 @@ namespace CodeArts.Emit.Expressions
             }
 
             protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
+        }
+
+        //? 忽略返回值。
+        private class VoidBlockAst : BlockAst
+        {
+            private readonly Label label;
+
+            public VoidBlockAst(BlockAst blockAst, Label label) : base(blockAst)
+            {
+                this.label = label;
+            }
+
+            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
         }
 
         private class VCatchAst : CatchAst
@@ -80,10 +95,11 @@ namespace CodeArts.Emit.Expressions
         /// </summary>
         /// <param name="returnType">返回结果。</param>
         /// <param name="finallyAst">一定会执行的代码。</param>
-        public TryAst(Type returnType, FinallyAst finallyAst) : base(returnType)
+        public TryAst(Type returnType, AstExpression finallyAst) : base(returnType)
         {
-            catchAsts = new List<CatchAst>();
             this.finallyAst = finallyAst ?? throw new ArgumentNullException(nameof(finallyAst));
+
+            catchAsts = new List<CatchAst>();
         }
 
         /// <summary>
@@ -114,11 +130,12 @@ namespace CodeArts.Emit.Expressions
         /// 发行变量和代码块(无返回值)。
         /// </summary>
         /// <param name="ilg">指令。</param>
-        protected override void EmitVoid(ILGenerator ilg)
+        /// <param name="label">跳转位置。</param>
+        protected override void EmitVoid(ILGenerator ilg, Label label)
         {
             ilg.BeginExceptionBlock();
 
-            base.EmitVoid(ilg);
+            base.EmitVoid(ilg, label);
 
             if (catchAsts.Count > 0)
             {
@@ -134,7 +151,19 @@ namespace CodeArts.Emit.Expressions
             {
                 ilg.BeginFinallyBlock();
 
-                finallyAst.Load(ilg);
+                if (finallyAst.RuntimeType == typeof(void))
+                {
+                    finallyAst.Load(ilg);
+                }
+                else if (finallyAst is BlockAst blockAst)
+                {
+                    new VoidBlockAst(blockAst, label)
+                        .Load(ilg);
+                }
+                else
+                {
+                    finallyAst.Load(ilg);
+                }
 
                 ilg.Emit(OpCodes.Nop);
             }
@@ -169,7 +198,19 @@ namespace CodeArts.Emit.Expressions
             {
                 ilg.BeginFinallyBlock();
 
-                finallyAst.Load(ilg);
+                if (finallyAst.RuntimeType == typeof(void))
+                {
+                    finallyAst.Load(ilg);
+                }
+                else if (finallyAst is BlockAst blockAst)
+                {
+                    new VoidBlockAst(blockAst, label)
+                        .Load(ilg);
+                }
+                else
+                {
+                    finallyAst.Load(ilg);
+                }
 
                 ilg.Emit(OpCodes.Nop);
             }
