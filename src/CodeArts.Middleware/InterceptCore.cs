@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using static CodeArts.Emit.AstExpression;
+using CodeArts.Emit.Expressions;
 
 namespace CodeArts
 {
@@ -43,15 +44,17 @@ namespace CodeArts
 
         private static bool TryGetValue(MethodInfo methodInfo, out InterceptAttribute[] attributes)
         {
-            if (methodInfo.IsGenericMethod)
-            {
-                methodInfo = methodInfo.GetGenericMethodDefinition();
-            }
-
             if (methodInfo.DeclaringType.IsGenericType)
             {
-                if (GenericInterceptCache.TryGetValue(methodInfo.DeclaringType.GetGenericTypeDefinition(), out Dictionary<MethodInfo, InterceptAttribute[]> interceptCache))
+                var typeDefinition = methodInfo.DeclaringType.GetGenericTypeDefinition();
+
+                if (GenericInterceptCache.TryGetValue(typeDefinition, out Dictionary<MethodInfo, InterceptAttribute[]> interceptCache))
                 {
+                    if (methodInfo.IsGenericMethod)
+                    {
+                        methodInfo = methodInfo.GetGenericMethodDefinition();
+                    }
+
                     return interceptCache.TryGetValue(methodInfo, out attributes);
                 }
 
@@ -60,16 +63,16 @@ namespace CodeArts
                 return false;
             }
 
-            return InterceptCache.TryGetValue(methodInfo, out attributes);
-        }
-
-        private static void InterceptAdd(MethodInfo methodInfo, InterceptAttribute[] attributes)
-        {
             if (methodInfo.IsGenericMethod)
             {
                 methodInfo = methodInfo.GetGenericMethodDefinition();
             }
 
+            return InterceptCache.TryGetValue(methodInfo, out attributes);
+        }
+
+        private static void InterceptAdd(MethodInfo methodInfo, InterceptAttribute[] attributes)
+        {
             if (methodInfo.DeclaringType.IsGenericType)
             {
                 var typeDefinition = methodInfo.DeclaringType.GetGenericTypeDefinition();
@@ -79,10 +82,20 @@ namespace CodeArts
                     GenericInterceptCache.Add(typeDefinition, interceptCache = new Dictionary<MethodInfo, InterceptAttribute[]>(MethodInfoEqualityComparer.Instance));
                 }
 
+                if (methodInfo.IsGenericMethod)
+                {
+                    methodInfo = methodInfo.GetGenericMethodDefinition();
+                }
+
                 interceptCache[methodInfo] = attributes;
             }
             else
             {
+                if (methodInfo.IsGenericMethod)
+                {
+                    methodInfo = methodInfo.GetGenericMethodDefinition();
+                }
+
                 InterceptCache[methodInfo] = attributes;
             }
         }
@@ -224,9 +237,30 @@ namespace CodeArts
                 arguments = new AstExpression[] { instanceAst, fieldEmitter, variable };
             }
 
-            bool hasByRef = paramterEmitters.Any(x => x.RuntimeType.IsByRef);
+            BlockAst blockAst;
 
-            var blockAst = hasByRef ? Try(methodInfo.ReturnType) : Block(methodInfo.ReturnType);
+            if (paramterEmitters.Any(x => x.RuntimeType.IsByRef))
+            {
+                var finallyAst = Finally();
+
+                for (int i = 0; i < paramterEmitters.Length; i++)
+                {
+                    var paramterEmitter = paramterEmitters[i];
+
+                    if (!paramterEmitter.IsByRef)
+                    {
+                        continue;
+                    }
+
+                    finallyAst.Append(Assign(paramterEmitter, Convert(ArrayIndex(variable, i), paramterEmitter.ParameterType)));
+                }
+
+                blockAst = Try(methodInfo.ReturnType, finallyAst);
+            }
+            else
+            {
+                blockAst = Block(methodInfo.ReturnType);
+            }
 
             if (overrideEmitter.ReturnType.IsClass && typeof(Task).IsAssignableFrom(overrideEmitter.ReturnType))
             {
@@ -246,25 +280,6 @@ namespace CodeArts
             else
             {
                 blockAst.Append(Call(InterceptGenericMethodCall.MakeGenericMethod(overrideEmitter.ReturnType), New(InterceptContextCtor, arguments)));
-            }
-
-            if (hasByRef)
-            {
-                var finallyAst = Block(typeof(void));
-
-                for (int i = 0; i < paramterEmitters.Length; i++)
-                {
-                    var paramterEmitter = paramterEmitters[i];
-
-                    if (!paramterEmitter.IsByRef)
-                    {
-                        continue;
-                    }
-
-                    finallyAst.Append(Assign(paramterEmitter, Convert(ArrayIndex(variable, i), paramterEmitter.ParameterType)));
-                }
-
-                blockAst.Append(Finally(finallyAst));
             }
 
             overrideEmitter.Append(blockAst);

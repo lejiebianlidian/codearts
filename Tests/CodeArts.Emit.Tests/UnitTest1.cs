@@ -140,6 +140,13 @@ namespace CodeArts.Emit.Tests
 
             public override T Run<T>(InterceptContext context, Intercept<T> intercept)
             {
+                if (context.Main.Name == nameof(IDependency.AopTestByRef))
+                {
+                    context.Inputs[1] = -10;
+
+                    return default;
+                }
+
                 return intercept.Run(context);
             }
 
@@ -182,9 +189,15 @@ namespace CodeArts.Emit.Tests
             /// <inheritdoc />
             public bool AopTestByRef(int i, ref int j)
             {
-                j = i * 5;
+                try
+                {
+                    return (i & 1) == 0;
+                }
+                finally
+                {
+                    j = i * 5;
+                }
 
-                return (i & 1) == 0;
             }
 
             /// <inheritdoc />
@@ -206,9 +219,9 @@ namespace CodeArts.Emit.Tests
             }
         }
 
+        [DependencyIntercept]
         public interface IDependency<T> where T : class
         {
-            [DependencyIntercept]
             T Clone(T obj);
 
             T Copy(T obj);

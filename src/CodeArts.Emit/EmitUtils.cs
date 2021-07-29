@@ -70,13 +70,19 @@ namespace CodeArts.Emit
 #endif
         }
 
-        private static bool EqualSignatureTypes(Type t1, Type t2)
+        /// <summary>
+        /// 签名类型匹配（含泛型约束匹配）。
+        /// </summary>
+        /// <param name="t1">类型1。</param>
+        /// <param name="t2">类型2。</param>
+        /// <returns></returns>
+        public static bool EqualSignatureTypes(Type t1, Type t2)
         {
             if (t1.IsGenericParameter != t2.IsGenericParameter)
             {
                 return false;
             }
-            
+
             if (t1.IsGenericType != t2.IsGenericType)
             {
                 return false;
@@ -115,13 +121,11 @@ namespace CodeArts.Emit
                     }
                 }
             }
-            else
+            else if (!AreEquivalent(t1, t2))
             {
-                if (!t1.Equals(t2))
-                {
-                    return false;
-                }
+                return false;
             }
+
             return true;
         }
 
@@ -1063,11 +1067,6 @@ namespace CodeArts.Emit
         /// <param name="isChecked">类型检查。</param>
         public static void EmitConvertToType(ILGenerator ilg, Type typeFrom, Type typeTo, bool isChecked = true)
         {
-            if (AreEquivalent(typeFrom, typeTo))
-            {
-                return;
-            }
-
             if (EqualSignatureTypes(typeFrom, typeTo))
             {
                 return;

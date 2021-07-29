@@ -12,6 +12,7 @@ namespace CodeArts.Emit.Expressions
     {
         private readonly AstExpression body;
 
+
         /// <summary>
         /// 构造函数。
         /// </summary>

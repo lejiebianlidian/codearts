@@ -8,13 +8,11 @@ namespace CodeArts.Emit.Expressions
     /// <summary>
     /// 捕获异常。
     /// </summary>
-    [DebuggerDisplay("try \\{ {body} \\}")]
+    [DebuggerDisplay("try \\{ //TODO:somethings \\}")]
     public class TryAst : BlockAst
     {
-        private static readonly Label EmptyLabel = default;
-
+        private readonly FinallyAst finallyAst;
         private readonly List<CatchAst> catchAsts;
-        private readonly List<FinallyAst> finallyAsts;
 
         private class VBlockAst : BlockAst
         {
@@ -45,7 +43,7 @@ namespace CodeArts.Emit.Expressions
             {
                 if (body is ReturnAst returnAst)
                 {
-                    base.Emit(ilg, returnAst.OnlyBodyAst());
+                    base.Emit(ilg, returnAst.Unbox());
                 }
                 else if (body is BlockAst blockAst)
                 {
@@ -65,7 +63,7 @@ namespace CodeArts.Emit.Expressions
         protected TryAst(TryAst tryAst) : base(tryAst)
         {
             catchAsts = tryAst.catchAsts;
-            finallyAsts = tryAst.finallyAsts;
+            finallyAst = tryAst.finallyAst;
         }
 
         /// <summary>
@@ -75,7 +73,17 @@ namespace CodeArts.Emit.Expressions
         public TryAst(Type returnType) : base(returnType)
         {
             catchAsts = new List<CatchAst>();
-            finallyAsts = new List<FinallyAst>();
+        }
+
+        /// <summary>
+        /// 构造函数。
+        /// </summary>
+        /// <param name="returnType">返回结果。</param>
+        /// <param name="finallyAst">一定会执行的代码。</param>
+        public TryAst(Type returnType, FinallyAst finallyAst) : base(returnType)
+        {
+            catchAsts = new List<CatchAst>();
+            this.finallyAst = finallyAst ?? throw new ArgumentNullException(nameof(finallyAst));
         }
 
         /// <summary>
@@ -99,13 +107,6 @@ namespace CodeArts.Emit.Expressions
                 return this;
             }
 
-            if (code is FinallyAst finallyAst)
-            {
-                finallyAsts.Add(finallyAst);
-
-                return this;
-            }
-
             return base.Append(code);
         }
 
@@ -125,18 +126,15 @@ namespace CodeArts.Emit.Expressions
                 {
                     item.Load(ilg);
                 }
+
+                ilg.Emit(OpCodes.Nop);
             }
 
-            if (finallyAsts.Count > 0)
+            if (finallyAst != null)
             {
                 ilg.BeginFinallyBlock();
 
-                ilg.Emit(OpCodes.Nop);
-
-                foreach (var item in finallyAsts)
-                {
-                    item.Load(ilg);
-                }
+                finallyAst.Load(ilg);
 
                 ilg.Emit(OpCodes.Nop);
             }
@@ -149,50 +147,34 @@ namespace CodeArts.Emit.Expressions
         /// </summary>
         /// <param name="ilg">指令。</param>
         /// <param name="variable">存储结果的变量。</param>
-        /// <param name="label"></param>
+        /// <param name="label">跳转位置。</param>
         protected override void Emit(ILGenerator ilg, LocalBuilder variable, Label label)
         {
-            var labelCatch = ilg.DefineLabel();
-
             ilg.BeginExceptionBlock();
 
-            base.Emit(ilg, variable, labelCatch);
+            base.Emit(ilg, variable, label);
 
             if (catchAsts.Count > 0)
             {
-                ilg.Emit(OpCodes.Nop);
-
                 foreach (var catchAst in catchAsts)
                 {
-                    new VCatchAst(variable, labelCatch, catchAst)
+                    new VCatchAst(variable, label, catchAst)
                         .Load(ilg);
                 }
 
                 ilg.Emit(OpCodes.Nop);
             }
 
-            ilg.MarkLabel(labelCatch);
-
-            if (finallyAsts.Count > 0)
+            if (finallyAst != null)
             {
                 ilg.BeginFinallyBlock();
 
-                ilg.Emit(OpCodes.Nop);
-
-                foreach (var item in finallyAsts)
-                {
-                    item.Load(ilg);
-                }
+                finallyAst.Load(ilg);
 
                 ilg.Emit(OpCodes.Nop);
             }
 
             ilg.EndExceptionBlock();
-
-            if (label != EmptyLabel)
-            {
-                ilg.Emit(OpCodes.Leave_S, label);
-            }
         }
 
         /// <summary>
@@ -201,9 +183,12 @@ namespace CodeArts.Emit.Expressions
         /// <param name="ilg">指令。</param>
         protected override void Emit(ILGenerator ilg)
         {
+            var label = ilg.DefineLabel();
             var variable = ilg.DeclareLocal(RuntimeType);
 
-            Emit(ilg, variable, EmptyLabel);
+            Emit(ilg, variable, label);
+
+            ilg.MarkLabel(label);
 
             ilg.Emit(OpCodes.Ldloc, variable);
         }
@@ -214,9 +199,9 @@ namespace CodeArts.Emit.Expressions
         /// <param name="ilg">指令。</param>
         public override void Load(ILGenerator ilg)
         {
-            if (catchAsts.Count == 0 && finallyAsts.Count == 0)
+            if (catchAsts.Count == 0 && finallyAst is null)
             {
-                throw new AstException("表达式残缺，未设置捕获代码块或最终执行代码块！");
+                throw new AstException("表达式残缺，未设置“catch”代码块和“finally”代码块至少设置其一！");
             }
 
             base.Load(ilg);

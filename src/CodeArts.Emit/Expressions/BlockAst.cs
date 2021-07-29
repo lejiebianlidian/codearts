@@ -24,6 +24,7 @@ namespace CodeArts.Emit.Expressions
                 this.variable = variable;
                 this.label = label;
             }
+
             protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
         }
 
@@ -44,13 +45,32 @@ namespace CodeArts.Emit.Expressions
         //? 忽略返回值。
         private class VoidBlockAst : BlockAst
         {
-            public VoidBlockAst(BlockAst blockAst) : base(blockAst)
+            private readonly Label label;
+
+            public VoidBlockAst(BlockAst blockAst, Label label) : base(blockAst)
             {
+                this.label = label;
             }
-            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg);
+
+            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
+        }
+
+        private class VoidTryAst : TryAst
+        {
+            private readonly Label label;
+
+            public VoidTryAst(TryAst tryAst, Label label) : base(tryAst)
+            {
+                this.label = label;
+            }
+
+            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
         }
 
         private bool isReadOnly = false;
+        private bool CanConverted2Void = true;
 
         /// <summary>
         /// 代码块。
@@ -116,19 +136,26 @@ namespace CodeArts.Emit.Expressions
                 throw new AstException("当前代码块已作为其它代码块的一部分，不能进行修改!");
             }
 
+            if (code is FinallyAst)
+            {
+                throw new AstException("表达式“FinallyAst”只能配合“TryAst”使用，不能单独使用!");
+            }
+
             if (code is ReturnAst returnAst)
             {
                 if (returnAst.IsEmpty)
                 {
+                    if (RuntimeType == typeof(void))
+                    {
+                        goto label_core;
+                    }
+
                     if (IsEmpty)
                     {
-                        if (RuntimeType == typeof(void))
-                        {
-                            goto label_core;
-                        }
-
                         throw new AstException("栈顶部无任何数据!");
                     }
+
+                    CanConverted2Void = false;
 
 #if NETSTANDARD2_1_OR_GREATER
                     AstExpression lastCode = codes[^1];
@@ -141,26 +168,40 @@ namespace CodeArts.Emit.Expressions
                         return this;
                     }
 
-                    if (lastCode.RuntimeType == RuntimeType || RuntimeType == typeof(void) || lastCode.RuntimeType.IsAssignableFrom(RuntimeType))
+                    if (EmitUtils.EqualSignatureTypes(lastCode.RuntimeType, RuntimeType) || lastCode.RuntimeType.IsAssignableFrom(RuntimeType))
                     {
                         goto label_core;
                     }
 
-                    throw new AstException($"返回类型“{lastCode.RuntimeType}”和预期的返回类型“{RuntimeType}”不相同!");
+                    throw new AstException($"栈顶部的数据类型“{lastCode.RuntimeType}”和预期的返回类型“{RuntimeType}”不相同!");
                 }
-                else if (RuntimeType != code.RuntimeType && code.RuntimeType.IsAssignableFrom(RuntimeType))
+                else
                 {
+                    CanConverted2Void = false;
+
+                    if (EmitUtils.EqualSignatureTypes(code.RuntimeType, RuntimeType) || code.RuntimeType.IsAssignableFrom(RuntimeType))
+                    {
+                        goto label_core;
+                    }
+
                     throw new AstException($"返回类型“{code.RuntimeType}”和预期的返回类型“{RuntimeType}”不相同!");
                 }
             }
             else if (code is BlockAst blockAst)
             {
-                if (RuntimeType != code.RuntimeType && code.RuntimeType.IsAssignableFrom(RuntimeType))
+                blockAst.isReadOnly = true;
+
+                if (RuntimeType == typeof(void) && blockAst.CanConverted2Void)
                 {
-                    throw new AstException($"返回类型“{code.RuntimeType}”和预期的返回类型“{RuntimeType}”不相同!");
+                    goto label_core;
                 }
 
-                blockAst.isReadOnly = true;
+                if (EmitUtils.EqualSignatureTypes(code.RuntimeType, RuntimeType) || code.RuntimeType.IsAssignableFrom(RuntimeType))
+                {
+                    goto label_core;
+                }
+
+                throw new AstException($"返回类型“{code.RuntimeType}”和预期的返回类型“{RuntimeType}”不相同!");
             }
 
         label_core:
@@ -174,97 +215,54 @@ namespace CodeArts.Emit.Expressions
         /// 发行变量和代码块(无返回值)。
         /// </summary>
         /// <param name="ilg">指令。</param>
-        protected virtual void EmitVoid(ILGenerator ilg)
+        /// <param name="label">跳转位置。</param>
+        protected virtual void EmitVoid(ILGenerator ilg, Label label)
         {
             foreach (var variable in variables)
             {
                 variable.Declare(ilg);
             }
 
-            foreach (var code in codes)
+            int i = 0, len = codes.Count - 1;
+
+            for (; i < len;)
             {
-                code.Load(ilg);
+                ilg.Emit(OpCodes.Nop);
 
-                if (code.RuntimeType != typeof(void))
-                {
-                    ilg.Emit(OpCodes.Nop);
-                }
-            }
-        }
-
-        /// <summary>
-        /// 发行变量和代码块（有返回值）。
-        /// </summary>
-        /// <param name="ilg">指令。</param>
-        /// <param name="local">存储结果的变量。</param>
-        /// <param name="label"></param>
-        protected virtual void Emit(ILGenerator ilg, LocalBuilder local, Label label)
-        {
-            if (IsEmpty)
-            {
-                throw new AstException("并非所有代码都有返回值!");
-            }
-
-            foreach (var variable in variables)
-            {
-                variable.Declare(ilg);
-            }
-
-            int i = 0, offset, len = codes.Count - 1;
-
-            for (; i < len; i += offset)
-            {
                 var code = codes[i];
                 var nextCode = codes[i + 1];
 
                 if (nextCode is ReturnAst returnAst)
                 {
-                    offset = 2; //? 一次处理两条记录。
+                    i += 2; //? 一次处理两条记录。
 
                     if (code is TryAst tryAst)
                     {
-                        if (tryAst.RuntimeType != typeof(void))
-                        {
-                            code = new VTryAst(local, label, tryAst);
-                        }
+                        new VoidTryAst(tryAst, label)
+                            .Load(ilg);
                     }
                     else if (code is BlockAst blockAst)
                     {
-                        if (returnAst.IsEmpty)
-                        {
-                            code = new VBlockAst(local, label, blockAst);
-                        }
-                        else
-                        {
-                            code = new VoidBlockAst(blockAst);
-                        }
-                    }
-
-                    code.Load(ilg);
-
-                    if (returnAst.IsEmpty)
-                    {
-                        EmitUtils.EmitConvertToType(ilg, code.RuntimeType, local.LocalType, true);
+                        new VoidBlockAst(blockAst, label)
+                             .Load(ilg);
                     }
                     else
                     {
-                        returnAst.OnlyBodyAst()
-                            .Load(ilg);
-
-                        EmitUtils.EmitConvertToType(ilg, returnAst.RuntimeType, local.LocalType, true);
+                        code.Load(ilg);
                     }
 
-                    ilg.Emit(OpCodes.Stloc, local);
-
-                    ilg.Emit(OpCodes.Leave_S, label);
+                    if (len > i)
+                    {
+                        ilg.Emit(OpCodes.Leave_S, label);
+                    }
                 }
                 else
                 {
-                    offset = 1;
+                    i++;
 
                     if (code is BlockAst blockAst)
                     {
-                        code = new VoidBlockAst(blockAst);
+                        code = new VoidBlockAst(blockAst, label);
                     }
 
                     code.Load(ilg);
@@ -282,25 +280,193 @@ namespace CodeArts.Emit.Expressions
             var codeAst = codes[codes.Count - 1];
 #endif
 
-            if (codeAst is TryAst tryAst)
+            ilg.Emit(OpCodes.Nop);
+
+            if (codeAst.RuntimeType == typeof(void))
             {
-                if (tryAst.RuntimeType != typeof(void))
+                codeAst.Load(ilg);
+            }
+            else
+            {
+                if (codeAst is TryAst tryAst1)
                 {
-                    codeAst = new VTryAst(local, label, tryAst);
+                    new VoidTryAst(tryAst1, label)
+                       .Load(ilg);
+                }
+                else if (codeAst is BlockAst blockAst1)
+                {
+                    new VoidBlockAst(blockAst1, label)
+                       .Load(ilg);
+                }
+                else
+                {
+                    codeAst.Load(ilg);
                 }
             }
-            else if(codeAst is BlockAst ast)
+        }
+
+        /// <summary>
+        /// 发行变量和代码块(无返回值)。
+        /// </summary>
+        /// <param name="ilg">指令。</param>
+        protected virtual void EmitVoid(ILGenerator ilg)
+        {
+            Label label = ilg.DefineLabel();
+
+            EmitVoid(ilg, label);
+
+            ilg.MarkLabel(label);
+        }
+
+        /// <summary>
+        /// 发行变量和代码块（有返回值）。
+        /// </summary>
+        /// <param name="ilg">指令。</param>
+        /// <param name="local">存储结果的变量。</param>
+        /// <param name="label">跳转位置。</param>
+        protected virtual void Emit(ILGenerator ilg, LocalBuilder local, Label label)
+        {
+            if (IsEmpty)
             {
-                codeAst = new VBlockAst(local, label, ast);
+                throw new AstException("并非所有代码都有返回值!");
             }
 
-            codeAst.Load(ilg);
+#if NETSTANDARD2_1_OR_GREATER
+            var codeAst = codes[^1];
+#else
+            var codeAst = codes[codes.Count - 1];
+#endif
 
-            EmitUtils.EmitConvertToType(ilg, codeAst.RuntimeType, local.LocalType, true);
+            if (EmitUtils.EqualSignatureTypes(codeAst.RuntimeType, RuntimeType) || codeAst.RuntimeType.IsAssignableFrom(RuntimeType))
+            {
+                goto label_core;
+            }
 
-            ilg.Emit(OpCodes.Stloc, local);
+            if (codes.Any(x => x is ReturnAst))
+            {
+                goto label_core;
+            }
 
-            ilg.Emit(OpCodes.Leave_S, label);
+            throw new AstException("并非所有代码都有返回值!");
+
+        label_core:
+
+            foreach (var variable in variables)
+            {
+                variable.Declare(ilg);
+            }
+
+            int i = 0, len = codes.Count - 1;
+
+            for (; i < len;)
+            {
+                ilg.Emit(OpCodes.Nop);
+
+                var code = codes[i];
+                var nextCode = codes[i + 1];
+
+                if (nextCode is ReturnAst returnAst)
+                {
+                    i += 2; //? 一次处理两条记录。
+
+                    if (code is TryAst tryAst)
+                    {
+                        if (returnAst.IsEmpty)
+                        {
+                            new VTryAst(local, label, tryAst)
+                                .Load(ilg);
+                        }
+                        else
+                        {
+                            new VoidTryAst(tryAst, label)
+                                .Load(ilg);
+                        }
+                    }
+                    else if (code is BlockAst blockAst)
+                    {
+                        if (returnAst.IsEmpty)
+                        {
+                            new VBlockAst(local, label, blockAst)
+                                .Load(ilg);
+                        }
+                        else
+                        {
+                            new VoidBlockAst(blockAst, label)
+                                 .Load(ilg);
+                        }
+                    }
+                    else
+                    {
+                        code.Load(ilg);
+
+                        if (returnAst.IsEmpty)
+                        {
+                            EmitUtils.EmitConvertToType(ilg, code.RuntimeType, local.LocalType, true);
+
+                            ilg.Emit(OpCodes.Stloc, local);
+                        }
+                    }
+
+                    if (!returnAst.IsEmpty)
+                    {
+                        returnAst.Unbox()
+                            .Load(ilg);
+
+                        EmitUtils.EmitConvertToType(ilg, returnAst.RuntimeType, local.LocalType, true);
+
+                        ilg.Emit(OpCodes.Stloc, local);
+                    }
+
+                    if (len > i)
+                    {
+                        ilg.Emit(OpCodes.Leave_S, label);
+                    }
+                }
+                else
+                {
+                    i++;
+
+                    if (code is BlockAst blockAst)
+                    {
+                        code = new VoidBlockAst(blockAst, label);
+                    }
+
+                    code.Load(ilg);
+                }
+            }
+
+            if (i > len) //? 结尾是返回结果代码。
+            {
+                return;
+            }
+
+            ilg.Emit(OpCodes.Nop);
+
+            if (codeAst.RuntimeType == typeof(void))
+            {
+                codeAst.Load(ilg);
+            }
+            else
+            {
+                if (codeAst is TryAst tryAst1)
+                {
+                    new VTryAst(local, label, tryAst1)
+                       .Load(ilg);
+                }
+                else if (codeAst is BlockAst blockAst1)
+                {
+                    new VBlockAst(local, label, blockAst1)
+                       .Load(ilg);
+                }
+                else
+                {
+                    codeAst.Load(ilg);
+
+                    EmitUtils.EmitConvertToType(ilg, codeAst.RuntimeType, local.LocalType, true);
+
+                    ilg.Emit(OpCodes.Stloc, local);
+                }
+            }
         }
 
         /// <summary>
@@ -309,17 +475,33 @@ namespace CodeArts.Emit.Expressions
         /// <param name="ilg">指令。</param>
         protected virtual void Emit(ILGenerator ilg)
         {
-            if (codes.Any(x => x is ReturnAst || x is BlockAst))
+            var variable = ilg.DeclareLocal(RuntimeType);
+
+            Label label = ilg.DefineLabel();
+
+            Emit(ilg, variable, label);
+
+            ilg.MarkLabel(label);
+
+            ilg.Emit(OpCodes.Ldloc, variable);
+        }
+
+        /// <summary>
+        /// 发行。
+        /// </summary>
+        /// <param name="ilg">指令。</param>
+        public override void Load(ILGenerator ilg)
+        {
+            if (isReadOnly || codes.Any(x => x is ReturnAst || x is BlockAst))
             {
-                var variable = ilg.DeclareLocal(RuntimeType);
-
-                Label label = ilg.DefineLabel();
-
-                Emit(ilg, variable, label);
-
-                ilg.MarkLabel(label);
-
-                ilg.Emit(OpCodes.Ldloc, variable);
+                if (RuntimeType == typeof(void))
+                {
+                    EmitVoid(ilg);
+                }
+                else
+                {
+                    Emit(ilg);
+                }
             }
             else
             {
@@ -330,24 +512,10 @@ namespace CodeArts.Emit.Expressions
 
                 foreach (var code in codes)
                 {
+                    ilg.Emit(OpCodes.Nop);
+
                     code.Load(ilg);
                 }
-            }
-        }
-
-        /// <summary>
-        /// 发行。
-        /// </summary>
-        /// <param name="ilg">指令。</param>
-        public override void Load(ILGenerator ilg)
-        {
-            if (RuntimeType == typeof(void))
-            {
-                EmitVoid(ilg);
-            }
-            else
-            {
-                Emit(ilg);
             }
         }
     }

@@ -38,7 +38,7 @@ namespace CodeArts.Emit.Expressions
                 }
                 else
                 {
-                    this.body = returnAst.OnlyBodyAst();
+                    this.body = returnAst.body;
                 }
             }
             else
@@ -58,11 +58,11 @@ namespace CodeArts.Emit.Expressions
         public bool IsEmpty { get; }
 
         /// <summary>
-        /// 获取返回的结果表达式。
+        /// 拆箱。
         /// </summary>
         /// <exception cref="AstException"><see cref="IsEmpty"/>为true时，无任何数据异常。</exception>
         /// <returns>结果表达式。</returns>
-        public AstExpression OnlyBodyAst()
+        public AstExpression Unbox()
         {
             if (IsEmpty)
             {
