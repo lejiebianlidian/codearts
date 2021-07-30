@@ -1,6 +1,5 @@
 ﻿using CodeArts.Emit.Expressions;
 using System;
-using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -87,6 +86,88 @@ namespace CodeArts.Emit
         /// 空表达式数组。
         /// </summary>
         public static readonly AstExpression[] EmptyAsts = new AstExpression[0];
+
+        #region 表达式模块
+        private class VBlockAst : BlockAst
+        {
+            private readonly LocalBuilder variable;
+            private readonly Label label;
+
+            public VBlockAst(LocalBuilder variable, Label label, BlockAst blockAst) : base(blockAst)
+            {
+                this.variable = variable;
+                this.label = label;
+            }
+
+            protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
+        }
+
+        private class VTryAst : TryAst
+        {
+            private readonly LocalBuilder variable;
+            private readonly Label label;
+
+            public VTryAst(LocalBuilder variable, Label label, TryAst tryAst) : base(tryAst)
+            {
+                this.variable = variable;
+                this.label = label;
+            }
+
+            protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
+        }
+
+        private class VoidBlockAst : BlockAst
+        {
+            private readonly Label label;
+
+            public VoidBlockAst(BlockAst blockAst, Label label) : base(blockAst)
+            {
+                this.label = label;
+            }
+
+            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
+        }
+
+        private class VoidTryAst : TryAst
+        {
+            private readonly Label label;
+
+            public VoidTryAst(TryAst tryAst, Label label) : base(tryAst)
+            {
+                this.label = label;
+            }
+
+            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
+        }
+        #endregion
+
+        /// <summary>
+        /// 发行忽略返回值的表达式。
+        /// </summary>
+        /// <param name="node">表达式。</param>
+        /// <param name="ilg">指令。</param>
+        /// <param name="label">跳转目标。</param>
+        protected virtual void EmitVoid(AstExpression node, ILGenerator ilg, Label label)
+        {
+            if (node is TryAst tryAst)
+            {
+                new VoidTryAst(tryAst, label)
+                    .Load(ilg);
+            }
+            else if (node is BlockAst blockAst)
+            {
+                new VoidBlockAst(blockAst, label)
+                     .Load(ilg);
+            }
+            else
+            {
+                node.Load(ilg);
+            }
+        }
 
         /// <summary>
         /// 类型。
@@ -237,36 +318,132 @@ namespace CodeArts.Emit
         public static CoalesceAst Coalesce(AstExpression left, AstExpression right) => new CoalesceAst(left, right);
 
         /// <summary>
-        /// 加法。
+        /// 加。
         /// </summary>
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static BinaryAst Add(AstExpression left, AstExpression right) => new BinaryAst(left, ExpressionType.Add, right);
+        public static BinaryAst Add(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.Add, right);
 
         /// <summary>
-        /// 减法。
+        /// 加(检查溢出)。
         /// </summary>
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static BinaryAst Subtract(AstExpression left, AstExpression right) => new BinaryAst(left, ExpressionType.Subtract, right);
+        public static BinaryAst AddChecked(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.AddChecked, right);
 
         /// <summary>
-        /// 乘法。
+        /// 加等于。
         /// </summary>
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static BinaryAst Multiply(AstExpression left, AstExpression right) => new BinaryAst(left, ExpressionType.Multiply, right);
+        public static BinaryAst AddAssign(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.AddAssign, right);
 
         /// <summary>
-        /// 除法。
+        /// 加等于(检查溢出)。
         /// </summary>
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static BinaryAst Divide(AstExpression left, AstExpression right) => new BinaryAst(left, ExpressionType.Divide, right);
+        public static BinaryAst AddAssignChecked(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.AddAssignChecked, right);
+
+        /// <summary>
+        /// 减。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst Subtract(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.Subtract, right);
+
+        /// <summary>
+        /// 减(检查溢出)。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst SubtractChecked(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.SubtractChecked, right);
+
+        /// <summary>
+        /// 减等于。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst SubtractAssign(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.SubtractAssign, right);
+
+        /// <summary>
+        /// 减等于(检查溢出)。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst SubtractAssignChecked(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.SubtractAssignChecked, right);
+
+        /// <summary>
+        /// 乘。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst Multiply(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.Multiply, right);
+
+        /// <summary>
+        /// 乘（检查溢出）。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst MultiplyChecked(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.MultiplyChecked, right);
+
+        /// <summary>
+        /// 乘等于。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst MultiplyAssign(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.MultiplyAssign, right);
+
+        /// <summary>
+        /// 乘等于（检查溢出）。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst MultiplyAssignChecked(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.MultiplyAssignChecked, right);
+
+        /// <summary>
+        /// 除。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst Divide(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.Divide, right);
+
+        /// <summary>
+        /// 除等于。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst DivideAssign(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.DivideAssign, right);
+
+        /// <summary>
+        /// 取模。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst Modulo(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.Modulo, right);
+
+        /// <summary>
+        /// 取模等于。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst ModuloAssign(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.ModuloAssign, right);
 
         /// <summary>
         /// 小于。
@@ -274,7 +451,7 @@ namespace CodeArts.Emit
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static BinaryAst LessThan(AstExpression left, AstExpression right) => new BinaryAst(left, ExpressionType.LessThan, right);
+        public static BinaryAst LessThan(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.LessThan, right);
 
         /// <summary>
         /// 小于等于。
@@ -282,7 +459,55 @@ namespace CodeArts.Emit
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static BinaryAst LessThanOrEqual(AstExpression left, AstExpression right) => new BinaryAst(left, ExpressionType.LessThanOrEqual, right);
+        public static BinaryAst LessThanOrEqual(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.LessThanOrEqual, right);
+
+        /// <summary>
+        /// 位运算：或。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst Or(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.Or, right);
+
+        /// <summary>
+        /// 位运算：或等于。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst OrAssign(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.OrAssign, right);
+
+        /// <summary>
+        /// 位运算：且。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst And(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.And, right);
+
+        /// <summary>
+        /// 位运算：且等于。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst AndAssign(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.AndAssign, right);
+
+        /// <summary>
+        /// 位运算：异或。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst ExclusiveOr(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.ExclusiveOr, right);
+
+        /// <summary>
+        /// 位运算：异或等于。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst ExclusiveOrAssign(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.ExclusiveOrAssign, right);
 
         /// <summary>
         /// 等于。
@@ -290,7 +515,7 @@ namespace CodeArts.Emit
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static BinaryAst Equal(AstExpression left, AstExpression right) => new BinaryAst(left, ExpressionType.Equal, right);
+        public static BinaryAst Equal(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.Equal, right);
 
         /// <summary>
         /// 大于等于。
@@ -298,7 +523,7 @@ namespace CodeArts.Emit
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static BinaryAst GreaterThanOrEqual(AstExpression left, AstExpression right) => new BinaryAst(left, ExpressionType.GreaterThanOrEqual, right);
+        public static BinaryAst GreaterThanOrEqual(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.GreaterThanOrEqual, right);
 
         /// <summary>
         /// 大于。
@@ -306,7 +531,7 @@ namespace CodeArts.Emit
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static BinaryAst GreaterThan(AstExpression left, AstExpression right) => new BinaryAst(left, ExpressionType.GreaterThan, right);
+        public static BinaryAst GreaterThan(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.GreaterThan, right);
 
         /// <summary>
         /// 不等于。
@@ -314,7 +539,58 @@ namespace CodeArts.Emit
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static BinaryAst NotEqual(AstExpression left, AstExpression right) => new BinaryAst(left, ExpressionType.NotEqual, right);
+        public static BinaryAst NotEqual(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.NotEqual, right);
+
+        /// <summary>
+        /// 或。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst OrElse(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.OrElse, right);
+
+        /// <summary>
+        /// 且。
+        /// </summary>
+        /// <param name="left">左表达式。</param>
+        /// <param name="right">右表达式。</param>
+        /// <returns></returns>
+        public static BinaryAst AndAlso(AstExpression left, AstExpression right) => new BinaryAst(left, BinaryExpressionType.AndAlso, right);
+
+        /// <summary>
+        /// 按位补运算或逻辑反运算。
+        /// </summary>
+        /// <param name="body">表达式。</param>
+        /// <returns></returns>
+        public static UnaryAst Not(AstExpression body) => new UnaryAst(body, UnaryExpressionType.Not);
+
+        /// <summary>
+        /// 是否为假。
+        /// </summary>
+        /// <param name="body">表达式。</param>
+        /// <returns></returns>
+        public static UnaryAst IsFalse(AstExpression body) => new UnaryAst(body, UnaryExpressionType.IsFalse);
+
+        /// <summary>
+        /// 递增。
+        /// </summary>
+        /// <param name="body">表达式。</param>
+        /// <returns></returns>
+        public static UnaryAst Increment(AstExpression body) => new UnaryAst(body, UnaryExpressionType.Increment);
+
+        /// <summary>
+        /// 递减。
+        /// </summary>
+        /// <param name="body">表达式。</param>
+        /// <returns></returns>
+        public static UnaryAst Decrement(AstExpression body) => new UnaryAst(body, UnaryExpressionType.Decrement);
+
+        /// <summary>
+        /// 正负反转。
+        /// </summary>
+        /// <param name="body">表达式。</param>
+        /// <returns></returns>
+        public static UnaryAst Negate(AstExpression body) => new UnaryAst(body, UnaryExpressionType.Negate);
 
         /// <summary>
         /// 条件判断。

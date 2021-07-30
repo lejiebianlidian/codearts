@@ -25,7 +25,7 @@ namespace CodeArts.Emit
 
         private static object GetConstant(int index) => Constants[index];
 
-        internal static bool IsNullable(this Type type) => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>);
+        internal static bool IsNullable(this Type type) => type.IsValueType && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>);
 
         #region Convert
 
@@ -623,7 +623,7 @@ namespace CodeArts.Emit
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
-        public static void EmitShort(ILGenerator ilg, short value)
+        public static void EmitInt16(ILGenerator ilg, short value)
         {
             EmitInt(ilg, value);
             ilg.Emit(OpCodes.Conv_I2);
@@ -632,7 +632,7 @@ namespace CodeArts.Emit
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
-        public static void EmitUShort(ILGenerator ilg, ushort value)
+        public static void EmitUInt16(ILGenerator ilg, ushort value)
         {
             EmitInt(ilg, value);
             ilg.Emit(OpCodes.Conv_U2);
@@ -808,7 +808,7 @@ namespace CodeArts.Emit
                     EmitSByte(ilg, (sbyte)value);
                     return true;
                 case TypeCode.Int16:
-                    EmitShort(ilg, (short)value);
+                    EmitInt16(ilg, (short)value);
                     return true;
                 case TypeCode.Int32:
                     EmitInt(ilg, (int)value);
@@ -829,7 +829,7 @@ namespace CodeArts.Emit
                     EmitByte(ilg, (byte)value);
                     return true;
                 case TypeCode.UInt16:
-                    EmitUShort(ilg, (ushort)value);
+                    EmitUInt16(ilg, (ushort)value);
                     return true;
                 case TypeCode.UInt32:
                     EmitUInt(ilg, (uint)value);

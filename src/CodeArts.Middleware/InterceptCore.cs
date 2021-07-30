@@ -220,7 +220,7 @@ namespace CodeArts
 
             AstExpression[] arguments = null;
 
-            var variable = overrideEmitter.DeclareVariable(typeof(object[]));
+            var variable = Variable(typeof(object[]));
 
             overrideEmitter.Append(Assign(variable, Array(paramterEmitters)));
 

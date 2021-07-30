@@ -20,7 +20,7 @@ namespace CodeArts.Emit.Expressions
         /// <param name="type">类型。</param>
         public TypeAsAst(AstExpression body, Type type) : base(type)
         {
-            this.body = body;
+            this.body = body ?? throw new ArgumentNullException(nameof(body));
         }
 
         /// <summary>
@@ -29,9 +29,28 @@ namespace CodeArts.Emit.Expressions
         /// <param name="ilg">指令。</param>
         public override void Load(ILGenerator ilg)
         {
-            body.Load(ilg);
+            if (RuntimeType.IsNullable())
+            {
+                body.Load(ilg);
 
-            ilg.Emit(OpCodes.Isinst, RuntimeType);
+                if (body.RuntimeType.IsValueType)
+                {
+                    ilg.Emit(OpCodes.Box, body.RuntimeType);
+                }
+
+                ilg.Emit(OpCodes.Isinst, Nullable.GetUnderlyingType(RuntimeType));
+            }
+            else
+            {
+                body.Load(ilg);
+
+                if (body.RuntimeType.IsValueType)
+                {
+                    ilg.Emit(OpCodes.Box, body.RuntimeType);
+                }
+
+                ilg.Emit(OpCodes.Isinst, RuntimeType);
+            }
         }
     }
 }

@@ -21,23 +21,6 @@ namespace CodeArts.Emit.Expressions
         }
 
         /// <summary>
-        /// 声明。
-        /// </summary>
-        /// <param name="ilg">指令。</param>
-        internal void Declare(ILGenerator ilg)
-        {
-            if(local is null)
-            {
-                local = ilg.DeclareLocal(RuntimeType);
-            }
-        }
-
-        /// <summary>
-        /// 变量。
-        /// </summary>
-        internal LocalBuilder Value => local ?? throw new AstException("变量未声明!");
-
-        /// <summary>
         /// 是否可写。
         /// </summary>
         public override bool CanWrite => true;
@@ -48,7 +31,12 @@ namespace CodeArts.Emit.Expressions
         /// <param name="ilg">指令。</param>
         public override void Load(ILGenerator ilg)
         {
-            ilg.Emit(OpCodes.Ldloc, Value);
+            if (local is null)
+            {
+                local = ilg.DeclareLocal(RuntimeType);
+            }
+
+            ilg.Emit(OpCodes.Ldloc, local);
         }
 
         /// <summary>
@@ -60,7 +48,12 @@ namespace CodeArts.Emit.Expressions
         {
             value.Load(ilg);
 
-            ilg.Emit(OpCodes.Stloc, Value);
+            if (local is null)
+            {
+                local = ilg.DeclareLocal(RuntimeType);
+            }
+
+            ilg.Emit(OpCodes.Stloc, local);
         }
     }
 }

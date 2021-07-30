@@ -11,7 +11,6 @@ namespace CodeArts.Emit.Expressions
     public class BlockAst : AstExpression
     {
         private readonly List<AstExpression> codes;
-        private readonly List<VariableAst> variables;
 
         private class VBlockAst : BlockAst
         {
@@ -80,7 +79,6 @@ namespace CodeArts.Emit.Expressions
         protected BlockAst(BlockAst blockAst) : base(blockAst?.RuntimeType ?? throw new ArgumentNullException(nameof(blockAst)))
         {
             codes = blockAst.codes;
-            variables = blockAst.variables;
             isReadOnly = blockAst.isReadOnly;
         }
 
@@ -91,30 +89,12 @@ namespace CodeArts.Emit.Expressions
         public BlockAst(Type returnType) : base(returnType)
         {
             codes = new List<AstExpression>();
-            variables = new List<VariableAst>();
         }
 
         /// <summary>
         /// 是否为空。
         /// </summary>
         public bool IsEmpty => codes.Count == 0;
-
-        /// <summary>
-        /// 声明变量。
-        /// </summary>
-        /// <param name="variableType">变量类型。</param>
-        /// <returns></returns>
-        public VariableAst DeclareVariable(Type variableType)
-        {
-            if (variableType is null)
-            {
-                throw new ArgumentNullException(nameof(variableType));
-            }
-
-            var variable = new VariableAst(variableType);
-            variables.Add(variable);
-            return variable;
-        }
 
         /// <summary>
         /// 添加代码。
@@ -210,11 +190,6 @@ namespace CodeArts.Emit.Expressions
         /// <param name="label">跳转位置。</param>
         protected virtual void EmitVoid(ILGenerator ilg, Label label)
         {
-            foreach (var variable in variables)
-            {
-                variable.Declare(ilg);
-            }
-
             int i = 0, len = codes.Count - 1;
 
             for (; i < len;)
@@ -342,11 +317,6 @@ namespace CodeArts.Emit.Expressions
             throw new AstException("并非所有代码都有返回值!");
 
         label_core:
-
-            foreach (var variable in variables)
-            {
-                variable.Declare(ilg);
-            }
 
             int i = 0, len = codes.Count - 1;
 
@@ -497,11 +467,6 @@ namespace CodeArts.Emit.Expressions
             }
             else
             {
-                foreach (var variable in variables)
-                {
-                    variable.Declare(ilg);
-                }
-
                 foreach (var code in codes)
                 {
                     ilg.Emit(OpCodes.Nop);

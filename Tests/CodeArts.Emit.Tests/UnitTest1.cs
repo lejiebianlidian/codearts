@@ -3,11 +3,11 @@ using CodeArts.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
+using static CodeArts.Emit.AstExpression;
 
 namespace CodeArts.Emit.Tests
 {
@@ -41,11 +41,11 @@ namespace CodeArts.Emit.Tests
             var pI = method.DefineParameter(typeof(int), ParameterAttributes.None, "i");
             var pJ = method.DefineParameter(typeof(int), ParameterAttributes.None, "j");
 
-            var b = method.DeclareVariable(typeof(Expression));
+            var b = Variable(typeof(Expression));
 
-            method.Append(new AssignAst(b, new ConstantAst(GetExpression(entry => entry.Id))));
+            method.Append(Assign(b, Constant(GetExpression(entry => entry.Id))));
 
-            method.Append(new ReturnAst(new ConditionAst(new BinaryAst(pI, ExpressionType.GreaterThanOrEqual, pJ), pI, pJ)));
+            method.Append(Return(Condition(GreaterThanOrEqual(pI, pJ), pI, pJ)));
 
             var type = classType.CreateType();
 #if NET461
@@ -79,38 +79,38 @@ namespace CodeArts.Emit.Tests
 
             var type = typeof(Entry);
 
-            var arg = method.DeclareVariable(typeof(ParameterExpression));
-            var argProperty = method.DeclareVariable(typeof(MemberExpression));
+            var arg = Variable(typeof(ParameterExpression));
+            var argProperty = Variable(typeof(MemberExpression));
 
-            var callArg = AstExpression.Call(typeof(Expression).GetMethod(nameof(Expression.Parameter), new Type[] { typeof(Type) }), AstExpression.Constant(type));
-            var callProperty = AstExpression.Call(typeof(Expression).GetMethod(nameof(Expression.Property), new Type[] { typeof(Expression), typeof(string) }), arg, AstExpression.Constant("Id"));
-            //var callBlock = AstExpression.Call(typeof(Expression).GetMethod(nameof(Expression.Block), new Type[] { typeof(IEnumerable<ParameterExpression>), typeof(IEnumerable<Expression>) }));
+            var callArg = Call(typeof(Expression).GetMethod(nameof(Expression.Parameter), new Type[] { typeof(Type) }), Constant(type));
+            var callProperty = Call(typeof(Expression).GetMethod(nameof(Expression.Property), new Type[] { typeof(Expression), typeof(string) }), arg, Constant("Id"));
+            //var callBlock = Call(typeof(Expression).GetMethod(nameof(Expression.Block), new Type[] { typeof(IEnumerable<ParameterExpression>), typeof(IEnumerable<Expression>) }));
 
-            method.Append(AstExpression.Assign(arg, callArg));
-            method.Append(AstExpression.Assign(argProperty, callProperty));
+            method.Append(Assign(arg, callArg));
+            method.Append(Assign(argProperty, callProperty));
 
-            var variable_variables = method.DeclareVariable(typeof(ParameterExpression[]));
+            var variable_variables = Variable(typeof(ParameterExpression[]));
 
-            var variables = AstExpression.NewArray(1, typeof(ParameterExpression));
+            var variables = NewArray(1, typeof(ParameterExpression));
 
-            method.Append(AstExpression.Assign(variable_variables, variables));
+            method.Append(Assign(variable_variables, variables));
 
-            method.Append(AstExpression.Assign(AstExpression.ArrayIndex(variable_variables, 0), arg));
+            method.Append(Assign(ArrayIndex(variable_variables, 0), arg));
 
-            var constantI = AstExpression.Call(typeof(Expression).GetMethod(nameof(Expression.Constant), new Type[] { typeof(object) }), AstExpression.Convert(pI, typeof(object)));
+            var constantI = Call(typeof(Expression).GetMethod(nameof(Expression.Constant), new Type[] { typeof(object) }), Convert(pI, typeof(object)));
 
-            var equalMethod = AstExpression.Call(typeof(Expression).GetMethod(nameof(Expression.Equal), new Type[] { typeof(Expression), typeof(Expression) }), argProperty, constantI);
+            var equalMethod = Call(typeof(Expression).GetMethod(nameof(Expression.Equal), new Type[] { typeof(Expression), typeof(Expression) }), argProperty, constantI);
 
             var lamdaMethod = typeof(Tests).GetMethod(nameof(Tests.Lambda))
                 .MakeGenericMethod(typeof(Func<Entry, bool>));
 
-            var whereLambda = method.DeclareVariable(typeof(Expression<Func<Entry, bool>>));
+            var whereLambda = Variable(typeof(Expression<Func<Entry, bool>>));
 
-            method.Append(AstExpression.Assign(whereLambda, AstExpression.Call(lamdaMethod, equalMethod, variable_variables)));
+            method.Append(Assign(whereLambda, Call(lamdaMethod, equalMethod, variable_variables)));
 
-            method.Append(AstExpression.Void());
+            method.Append(Void());
 
-            method.Append(AstExpression.Return());
+            method.Append(Return());
 
             classType.CreateType();
 #if NET461
@@ -217,19 +217,40 @@ namespace CodeArts.Emit.Tests
                         break;
                 }
 
-                object value = i;
+                string str = "A";
 
-                switch (value)
+                switch (str)
                 {
-                    case int i1:
-                        i = i1;
+                    case "A":
+                        str = "X";
                         break;
-                    case string text:
-                        i = 10;
+                    case "B":
+                        str = "Y";
                         break;
                     default:
                         break;
                 }
+
+                //switch (value)
+                //{
+                //    case int i1:
+                //        i = i1;
+                //        break;
+                //    case string text:
+                //        i = 10;
+                //        break;
+                //    default:
+                //        break;
+                //}
+
+                //var b = (i == 1) && i > 0;
+
+                //if (b)
+                //{
+                //    return true;
+                //}
+
+                j = 1;
 
                 return (i & 1) == 0;
             }
@@ -289,6 +310,10 @@ namespace CodeArts.Emit.Tests
             IDependency<IDependency> dependency2 = serviceProvider.GetService<IDependency<IDependency>>();
 
             int j = 10;
+
+            int i = -10;
+
+            j = +i;
 
             dependency.Flags = true;
 
