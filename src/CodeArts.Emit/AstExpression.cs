@@ -93,7 +93,7 @@ namespace CodeArts.Emit
             private readonly LocalBuilder variable;
             private readonly Label label;
 
-            public VBlockAst(LocalBuilder variable, Label label, BlockAst blockAst) : base(blockAst)
+            public VBlockAst(BlockAst blockAst, LocalBuilder variable, Label label) : base(blockAst)
             {
                 this.variable = variable;
                 this.label = label;
@@ -108,7 +108,7 @@ namespace CodeArts.Emit
             private readonly LocalBuilder variable;
             private readonly Label label;
 
-            public VTryAst(LocalBuilder variable, Label label, TryAst tryAst) : base(tryAst)
+            public VTryAst(TryAst tryAst, LocalBuilder variable, Label label) : base(tryAst)
             {
                 this.variable = variable;
                 this.label = label;
@@ -140,7 +140,7 @@ namespace CodeArts.Emit
                 this.label = label;
             }
 
-            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
+            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg);
             protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
         }
         #endregion
@@ -166,6 +166,42 @@ namespace CodeArts.Emit
             else
             {
                 node.Load(ilg);
+            }
+        }
+
+        /// <summary>
+        /// 发行忽略返回值的表达式。
+        /// </summary>
+        /// <param name="node">表达式。</param>
+        /// <param name="ilg">指令。</param>
+        /// <param name="local">返回值存放的变量。</param>
+        /// <param name="label">跳转目标。</param>
+        protected virtual void Emit(AstExpression node, ILGenerator ilg, LocalBuilder local, Label label)
+        {
+            if (node is TryAst tryAst)
+            {
+                new VTryAst(tryAst, local, label)
+                    .Load(ilg);
+            }
+            else if (node is BlockAst blockAst)
+            {
+                new VBlockAst(blockAst, local, label)
+                     .Load(ilg);
+            }
+            else if (node.RuntimeType == typeof(void))
+            {
+                node.Load(ilg);
+            }
+            else
+            {
+                node.Load(ilg);
+
+                if (EmitUtils.EqualSignatureTypes(node.RuntimeType, local.LocalType) || node.RuntimeType.IsAssignableFrom(local.LocalType))
+                {
+                    EmitUtils.EmitConvertToType(ilg, node.RuntimeType, local.LocalType, true);
+
+                    ilg.Emit(OpCodes.Stloc, local);
+                }
             }
         }
 
@@ -215,6 +251,12 @@ namespace CodeArts.Emit
         /// <param name="variableType">变量类型。</param>
         /// <returns></returns>
         public static VariableAst Variable(Type variableType) => new VariableAst(variableType);
+        /// <summary>
+        /// 构造函数。
+        /// </summary>
+        /// <param name="returnType">类型。</param>
+        /// <param name="name">变量名称。</param>
+        public static VariableAst Variable(Type variableType, string name) => new VariableAst(variableType, name);
 
         /// <summary>
         /// 类型是。
@@ -572,18 +614,32 @@ namespace CodeArts.Emit
         public static UnaryAst IsFalse(AstExpression body) => new UnaryAst(body, UnaryExpressionType.IsFalse);
 
         /// <summary>
-        /// 递增。
+        /// 增量(i + 1)。
         /// </summary>
         /// <param name="body">表达式。</param>
         /// <returns></returns>
         public static UnaryAst Increment(AstExpression body) => new UnaryAst(body, UnaryExpressionType.Increment);
 
         /// <summary>
-        /// 递减。
+        /// 减量(i - 1)。
         /// </summary>
         /// <param name="body">表达式。</param>
         /// <returns></returns>
         public static UnaryAst Decrement(AstExpression body) => new UnaryAst(body, UnaryExpressionType.Decrement);
+
+        /// <summary>
+        /// 递增(i += 1)。
+        /// </summary>
+        /// <param name="body">表达式。</param>
+        /// <returns></returns>
+        public static UnaryAst IncrementAssign(AstExpression body) => new UnaryAst(body, UnaryExpressionType.IncrementAssign);
+
+        /// <summary>
+        /// 递减(i -= 1)。
+        /// </summary>
+        /// <param name="body">表达式。</param>
+        /// <returns></returns>
+        public static UnaryAst DecrementAssign(AstExpression body) => new UnaryAst(body, UnaryExpressionType.DecrementAssign);
 
         /// <summary>
         /// 正负反转。
@@ -591,6 +647,30 @@ namespace CodeArts.Emit
         /// <param name="body">表达式。</param>
         /// <returns></returns>
         public static UnaryAst Negate(AstExpression body) => new UnaryAst(body, UnaryExpressionType.Negate);
+
+        /// <summary>
+        /// 流程（无返回值）。
+        /// </summary>
+        /// <param name="switchValue">判断依据。</param>
+        /// <returns></returns>
+        public static SwitchAst Switch(AstExpression switchValue) => new SwitchAst(switchValue);
+
+        /// <summary>
+        /// 流程(返回“<paramref name="defaultAst"/>.RuntimeType”类型)。
+        /// </summary>
+        /// <param name="switchValue">判断依据。</param>
+        /// <param name="defaultAst">默认流程。</param>
+        /// <returns></returns>
+        public static SwitchAst Switch(AstExpression switchValue, AstExpression defaultAst) => new SwitchAst(switchValue, defaultAst);
+
+        /// <summary>
+        /// 流程(返回“<paramref name="returnType"/>”类型)。
+        /// </summary>
+        /// <param name="switchValue">判断依据。</param>
+        /// <param name="defaultAst">默认流程。</param>
+        /// <param name="returnType">流程返回值。</param>
+        /// <returns></returns>
+        public static SwitchAst Switch(AstExpression switchValue, AstExpression defaultAst, Type returnType) => new SwitchAst(switchValue, defaultAst, returnType);
 
         /// <summary>
         /// 条件判断。
@@ -730,7 +810,6 @@ namespace CodeArts.Emit
         /// <returns></returns>
         public static TryAst Try(Type returnType) => new TryAst(returnType);
 
-
         /// <summary>
         /// 异常处理。
         /// </summary>
@@ -738,38 +817,6 @@ namespace CodeArts.Emit
         /// <param name="finallyAst">一定会执行的代码。</param>
         /// <returns></returns>
         public static TryAst Try(Type returnType, AstExpression finallyAst) => new TryAst(returnType, finallyAst);
-
-        /// <summary>
-        /// 捕获任意异常。
-        /// </summary>
-        /// <param name="body">异常处理。</param>
-        /// <returns></returns>
-        public static CatchAst Catch(AstExpression body) => new CatchAst(body);
-
-        /// <summary>
-        /// 捕获任意异常，并将异常赋值给指定变量。
-        /// </summary>
-        /// <param name="body">异常处理。</param>
-        /// <param name="variable">变量。</param>
-        /// <returns></returns>
-        public static CatchAst Catch(AstExpression body, VariableAst variable) => new CatchAst(body, variable);
-
-        /// <summary>
-        /// 捕获指定类型的异常。
-        /// </summary>
-        /// <param name="body">异常处理。</param>
-        /// <param name="exceptionType">异常类型。</param>
-        /// <returns></returns>
-        public static CatchAst Catch(AstExpression body, Type exceptionType) => new CatchAst(body, exceptionType);
-
-        /// <summary>
-        /// 捕获指定类型的异常，并将异常赋值给指定变量。
-        /// </summary>
-        /// <param name="body">异常处理。</param>
-        /// <param name="exceptionType">异常类型。</param>
-        /// <param name="variable">变量。</param>
-        /// <returns></returns>
-        public static CatchAst Catch(AstExpression body, Type exceptionType, VariableAst variable) => new CatchAst(body, exceptionType, variable);
 
         /// <summary>
         /// 字段。

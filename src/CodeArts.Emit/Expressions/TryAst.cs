@@ -14,60 +14,110 @@ namespace CodeArts.Emit.Expressions
         private readonly AstExpression finallyAst;
         private readonly List<CatchAst> catchAsts;
 
-        private class VBlockAst : BlockAst
+        /// <summary>
+        /// 异常处理。
+        /// </summary>
+        public interface IErrorHandler
         {
-            private readonly LocalBuilder variable;
-            private readonly Label label;
-
-            public VBlockAst(LocalBuilder variable, Label label, BlockAst blockAst) : base(blockAst)
-            {
-                this.variable = variable;
-                this.label = label;
-            }
-
-            protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
-            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
+            /// <summary>
+            /// 添加表达式。
+            /// </summary>
+            /// <param name="code">表达式。</param>
+            IErrorHandler Append(AstExpression code);
         }
 
-        //? 忽略返回值。
-        private class VoidBlockAst : BlockAst
+        /// <summary>
+        /// 捕获异常。
+        /// </summary>
+        [DebuggerDisplay("catch({variable}){ {body} }")]
+        private class CatchAst : BlockAst, IErrorHandler
         {
-            private readonly Label label;
-
-            public VoidBlockAst(BlockAst blockAst, Label label) : base(blockAst)
+            private class CatchBlockAst : AstExpression
             {
-                this.label = label;
-            }
-
-            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
-            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
-        }
-
-        private class VCatchAst : CatchAst
-        {
-            private readonly LocalBuilder variable;
-            private readonly Label label;
-
-            public VCatchAst(LocalBuilder variable, Label label, CatchAst catchAst) : base(catchAst)
-            {
-                this.variable = variable;
-                this.label = label;
-            }
-
-            protected override void Emit(ILGenerator ilg, AstExpression body)
-            {
-                if (body is ReturnAst returnAst)
+                public CatchBlockAst(Type returnType) : base(returnType)
                 {
-                    base.Emit(ilg, returnAst.Unbox());
                 }
-                else if (body is BlockAst blockAst)
+
+                public override void Load(ILGenerator ilg)
                 {
-                    base.Emit(ilg, new VBlockAst(variable, label, blockAst));
+                    ilg.BeginCatchBlock(RuntimeType);
+                }
+            }
+
+            private readonly Type exceptionType;
+            private readonly VariableAst variable;
+
+            protected CatchAst(CatchAst catchAst) : base(catchAst?.RuntimeType)
+            {
+                if (catchAst is null)
+                {
+                    throw new ArgumentNullException(nameof(catchAst));
+                }
+                variable = catchAst.variable;
+                exceptionType = catchAst.exceptionType;
+            }
+
+            public CatchAst(Type returnType, Type exceptionType) : base(returnType)
+            {
+                if (exceptionType is null)
+                {
+                    throw new ArgumentNullException(nameof(exceptionType));
+                }
+
+                if (exceptionType == typeof(Exception) || exceptionType.IsAssignableFrom(typeof(Exception)))
+                {
+                    this.exceptionType = exceptionType;
                 }
                 else
                 {
-                    base.Emit(ilg, body);
+                    throw new AstException($"变量类型“{exceptionType}”未继承“{typeof(Exception)}”异常基类!");
                 }
+            }
+
+            public CatchAst(Type returnType, VariableAst variable) : base(returnType)
+            {
+                if (variable is null)
+                {
+                    throw new ArgumentNullException(nameof(variable));
+                }
+
+                this.exceptionType = variable.RuntimeType;
+
+                if (exceptionType == typeof(Exception) || exceptionType.IsAssignableFrom(typeof(Exception)))
+                {
+                    this.variable = variable;
+                }
+                else
+                {
+                    throw new AstException($"变量类型“{exceptionType}”未继承“{typeof(Exception)}”异常基类!");
+                }
+            }
+
+            /// <summary>
+            /// 生成。
+            /// </summary>
+            /// <param name="ilg">指令。</param>
+            public override void Load(ILGenerator ilg)
+            {
+                if (variable is null)
+                {
+                    ilg.BeginCatchBlock(exceptionType);
+                }
+                else
+                {
+                    variable.Assign(ilg, new CatchBlockAst(exceptionType));
+                }
+
+                ilg.Emit(OpCodes.Nop);
+
+                base.Load(ilg);
+            }
+
+            IErrorHandler IErrorHandler.Append(AstExpression code)
+            {
+                Append(code);
+
+                return this;
             }
         }
 
@@ -103,27 +153,62 @@ namespace CodeArts.Emit.Expressions
         }
 
         /// <summary>
-        /// 添加代码。
+        /// 捕获任意异常。
         /// </summary>
-        /// <param name="code">代码。</param>
         /// <returns></returns>
-        public override BlockAst Append(AstExpression code)
-        {
-            if (code is CatchAst catchAst)
-            {
-                if (RuntimeType.IsAssignableFrom(catchAst.RuntimeType) || typeof(Exception).IsAssignableFrom(catchAst.RuntimeType))
-                {
-                    catchAsts.Add(catchAst);
-                }
-                else
-                {
-                    throw new ArgumentException("捕获器只能返回相同类型或抛出异常!", nameof(code));
-                }
+        public IErrorHandler Catch() => Catch(typeof(Exception));
 
-                return this;
+        /// <summary>
+        /// 捕获“<paramref name="variable"/>.RuntimeType”异常，并将异常赋值给指定变量。
+        /// </summary>
+        /// <returns></returns>
+        public IErrorHandler Catch(VariableAst variable) => Catch(RuntimeType, variable);
+
+        /// <summary>
+        /// 捕获指定类型异常。
+        /// </summary>
+        /// <param name="exceptionType">异常类型。</param>
+        /// <returns></returns>
+        public IErrorHandler Catch(Type exceptionType) => Catch(RuntimeType, exceptionType);
+
+        /// <summary>
+        /// 捕获指定类型的异常。
+        /// </summary>
+        /// <param name="returnType">返回类型。</param>
+        /// <param name="exceptionType">异常类型。</param>
+        /// <returns></returns>
+        public IErrorHandler Catch(Type returnType, Type exceptionType)
+        {
+            if (exceptionType is null)
+            {
+                throw new ArgumentNullException(nameof(exceptionType));
             }
 
-            return base.Append(code);
+            var catchAst = new CatchAst(returnType, exceptionType);
+
+            catchAsts.Add(catchAst);
+
+            return catchAst;
+        }
+
+        /// <summary>
+        /// 捕获“<paramref name="variable"/>.RuntimeType”的异常，并将异常赋值给指定变量。
+        /// </summary>
+        /// <param name="returnType">返回类型。</param>
+        /// <param name="variable">变量。</param>
+        /// <returns></returns>
+        public IErrorHandler Catch(Type returnType, VariableAst variable)
+        {
+            if (variable is null)
+            {
+                throw new ArgumentNullException(nameof(variable));
+            }
+
+            var catchAst = new CatchAst(returnType, variable);
+
+            catchAsts.Add(catchAst);
+
+            return catchAst;
         }
 
         /// <summary>
@@ -139,9 +224,9 @@ namespace CodeArts.Emit.Expressions
 
             if (catchAsts.Count > 0)
             {
-                foreach (var item in catchAsts)
+                foreach (var catchAst in catchAsts)
                 {
-                    item.Load(ilg);
+                    EmitVoid(catchAst, ilg, label);
                 }
 
                 ilg.Emit(OpCodes.Nop);
@@ -151,19 +236,7 @@ namespace CodeArts.Emit.Expressions
             {
                 ilg.BeginFinallyBlock();
 
-                if (finallyAst.RuntimeType == typeof(void))
-                {
-                    finallyAst.Load(ilg);
-                }
-                else if (finallyAst is BlockAst blockAst)
-                {
-                    new VoidBlockAst(blockAst, label)
-                        .Load(ilg);
-                }
-                else
-                {
-                    finallyAst.Load(ilg);
-                }
+                EmitVoid(finallyAst, ilg, label);
 
                 ilg.Emit(OpCodes.Nop);
             }
@@ -187,8 +260,7 @@ namespace CodeArts.Emit.Expressions
             {
                 foreach (var catchAst in catchAsts)
                 {
-                    new VCatchAst(variable, label, catchAst)
-                        .Load(ilg);
+                    Emit(catchAst, ilg, variable, label);
                 }
 
                 ilg.Emit(OpCodes.Nop);
@@ -198,40 +270,12 @@ namespace CodeArts.Emit.Expressions
             {
                 ilg.BeginFinallyBlock();
 
-                if (finallyAst.RuntimeType == typeof(void))
-                {
-                    finallyAst.Load(ilg);
-                }
-                else if (finallyAst is BlockAst blockAst)
-                {
-                    new VoidBlockAst(blockAst, label)
-                        .Load(ilg);
-                }
-                else
-                {
-                    finallyAst.Load(ilg);
-                }
+                EmitVoid(finallyAst, ilg, label);
 
                 ilg.Emit(OpCodes.Nop);
             }
 
             ilg.EndExceptionBlock();
-        }
-
-        /// <summary>
-        /// 发行（有返回值）。
-        /// </summary>
-        /// <param name="ilg">指令。</param>
-        protected override void Emit(ILGenerator ilg)
-        {
-            var label = ilg.DefineLabel();
-            var variable = ilg.DeclareLocal(RuntimeType);
-
-            Emit(ilg, variable, label);
-
-            ilg.MarkLabel(label);
-
-            ilg.Emit(OpCodes.Ldloc, variable);
         }
 
         /// <summary>

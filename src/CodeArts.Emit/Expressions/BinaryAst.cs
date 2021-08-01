@@ -54,7 +54,7 @@ namespace CodeArts.Emit.Expressions
                 case BinaryExpressionType.GreaterThanOrEqual:
                 case BinaryExpressionType.GreaterThan:
                 case BinaryExpressionType.NotEqual:
-                    if (left.RuntimeType != right.RuntimeType)
+                    if (left.RuntimeType == right.RuntimeType && IsArithmetic(left.RuntimeType))
                     {
                         return typeof(bool);
                     }
@@ -141,7 +141,7 @@ namespace CodeArts.Emit.Expressions
         /// <param name="ilg">命令。</param>
         public override void Load(ILGenerator ilg)
         {
-            if (expressionType < BinaryExpressionType.OrElse && (expressionType & BinaryExpressionType.AddAssign) == 0)
+            if (expressionType < BinaryExpressionType.OrElse && (expressionType & BinaryExpressionType.Add) == 0)
             {
                 left.Assign(ilg, new BinaryAst(this));
             }

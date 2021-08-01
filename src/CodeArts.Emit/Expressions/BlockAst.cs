@@ -12,63 +12,6 @@ namespace CodeArts.Emit.Expressions
     {
         private readonly List<AstExpression> codes;
 
-        private class VBlockAst : BlockAst
-        {
-            private readonly LocalBuilder variable;
-            private readonly Label label;
-
-            public VBlockAst(LocalBuilder variable, Label label, BlockAst blockAst) : base(blockAst)
-            {
-                this.variable = variable;
-                this.label = label;
-            }
-
-            protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
-            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
-        }
-
-        private class VTryAst : TryAst
-        {
-            private readonly LocalBuilder variable;
-            private readonly Label label;
-
-            public VTryAst(LocalBuilder variable, Label label, TryAst tryAst) : base(tryAst)
-            {
-                this.variable = variable;
-                this.label = label;
-            }
-
-            protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
-            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
-        }
-
-        //? 忽略返回值。
-        private class VoidBlockAst : BlockAst
-        {
-            private readonly Label label;
-
-            public VoidBlockAst(BlockAst blockAst, Label label) : base(blockAst)
-            {
-                this.label = label;
-            }
-
-            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
-            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
-        }
-
-        private class VoidTryAst : TryAst
-        {
-            private readonly Label label;
-
-            public VoidTryAst(TryAst tryAst, Label label) : base(tryAst)
-            {
-                this.label = label;
-            }
-
-            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
-            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
-        }
-
         private bool isReadOnly = false;
         private bool CanConverted2Void = true;
 
@@ -203,36 +146,15 @@ namespace CodeArts.Emit.Expressions
                 {
                     i += 2; //? 一次处理两条记录。
 
-                    if (code is TryAst tryAst)
-                    {
-                        new VoidTryAst(tryAst, label)
-                            .Load(ilg);
-                    }
-                    else if (code is BlockAst blockAst)
-                    {
-                        new VoidBlockAst(blockAst, label)
-                             .Load(ilg);
-                    }
-                    else
-                    {
-                        code.Load(ilg);
-                    }
+                    EmitVoid(code, ilg, label);
 
-                    if (len > i)
-                    {
-                        ilg.Emit(OpCodes.Leave_S, label);
-                    }
+                    ilg.Emit(OpCodes.Leave_S, label);
                 }
                 else
                 {
                     i++;
 
-                    if (code is BlockAst blockAst)
-                    {
-                        code = new VoidBlockAst(blockAst, label);
-                    }
-
-                    code.Load(ilg);
+                    EmitVoid(code, ilg, label);
                 }
             }
 
@@ -249,27 +171,7 @@ namespace CodeArts.Emit.Expressions
 
             ilg.Emit(OpCodes.Nop);
 
-            if (codeAst.RuntimeType == typeof(void))
-            {
-                codeAst.Load(ilg);
-            }
-            else
-            {
-                if (codeAst is TryAst tryAst1)
-                {
-                    new VoidTryAst(tryAst1, label)
-                       .Load(ilg);
-                }
-                else if (codeAst is BlockAst blockAst1)
-                {
-                    new VoidBlockAst(blockAst1, label)
-                       .Load(ilg);
-                }
-                else
-                {
-                    codeAst.Load(ilg);
-                }
-            }
+            EmitVoid(codeAst, ilg, label);
         }
 
         /// <summary>
@@ -331,52 +233,15 @@ namespace CodeArts.Emit.Expressions
                 {
                     i += 2; //? 一次处理两条记录。
 
-                    if (code is TryAst tryAst)
+                    if (returnAst.IsEmpty)
                     {
-                        if (returnAst.IsEmpty)
-                        {
-                            new VTryAst(local, label, tryAst)
-                                .Load(ilg);
-                        }
-                        else
-                        {
-                            new VoidTryAst(tryAst, label)
-                                .Load(ilg);
-                        }
-                    }
-                    else if (code is BlockAst blockAst)
-                    {
-                        if (returnAst.IsEmpty)
-                        {
-                            new VBlockAst(local, label, blockAst)
-                                .Load(ilg);
-                        }
-                        else
-                        {
-                            new VoidBlockAst(blockAst, label)
-                                 .Load(ilg);
-                        }
+                        Emit(code, ilg, local, label);
                     }
                     else
                     {
-                        code.Load(ilg);
+                        EmitVoid(code, ilg, label);
 
-                        if (returnAst.IsEmpty)
-                        {
-                            EmitUtils.EmitConvertToType(ilg, code.RuntimeType, local.LocalType, true);
-
-                            ilg.Emit(OpCodes.Stloc, local);
-                        }
-                    }
-
-                    if (!returnAst.IsEmpty)
-                    {
-                        returnAst.Unbox()
-                            .Load(ilg);
-
-                        EmitUtils.EmitConvertToType(ilg, returnAst.RuntimeType, local.LocalType, true);
-
-                        ilg.Emit(OpCodes.Stloc, local);
+                        Emit(returnAst.Unbox(), ilg, local, label);
                     }
 
                     if (len > i)
@@ -388,12 +253,7 @@ namespace CodeArts.Emit.Expressions
                 {
                     i++;
 
-                    if (code is BlockAst blockAst)
-                    {
-                        code = new VoidBlockAst(blockAst, label);
-                    }
-
-                    code.Load(ilg);
+                    EmitVoid(code, ilg, label);
                 }
             }
 
@@ -404,31 +264,7 @@ namespace CodeArts.Emit.Expressions
 
             ilg.Emit(OpCodes.Nop);
 
-            if (codeAst.RuntimeType == typeof(void))
-            {
-                codeAst.Load(ilg);
-            }
-            else
-            {
-                if (codeAst is TryAst tryAst1)
-                {
-                    new VTryAst(local, label, tryAst1)
-                       .Load(ilg);
-                }
-                else if (codeAst is BlockAst blockAst1)
-                {
-                    new VBlockAst(local, label, blockAst1)
-                       .Load(ilg);
-                }
-                else
-                {
-                    codeAst.Load(ilg);
-
-                    EmitUtils.EmitConvertToType(ilg, codeAst.RuntimeType, local.LocalType, true);
-
-                    ilg.Emit(OpCodes.Stloc, local);
-                }
-            }
+            Emit(codeAst, ilg, local, label);
         }
 
         /// <summary>

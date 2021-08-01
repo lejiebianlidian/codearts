@@ -11,6 +11,12 @@ namespace CodeArts.Emit.Expressions
         private readonly UnaryExpressionType expressionType;
         private readonly AstExpression body;
 
+        private UnaryAst(UnaryAst unaryAst) : base(unaryAst.RuntimeType)
+        {
+            expressionType = unaryAst.expressionType - 1;
+            body = unaryAst.body;
+        }
+
         /// <summary>
         /// 一元运算。
         /// </summary>
@@ -28,50 +34,58 @@ namespace CodeArts.Emit.Expressions
         /// <param name="ilg">指令。</param>
         public override void Load(ILGenerator ilg)
         {
-            body.Load(ilg);
-
-            switch (expressionType)
+            if (expressionType < UnaryExpressionType.UnaryPlus && (expressionType & UnaryExpressionType.Increment) == 0)
             {
-                case UnaryExpressionType.UnaryPlus:
-                    ilg.Emit(OpCodes.Nop);
-                    break;
-                case UnaryExpressionType.Negate:
-                    ilg.Emit(OpCodes.Neg);
-                    break;
-                case UnaryExpressionType.Not:
-                    if (RuntimeType == typeof(bool))
-                    {
+                body.Assign(ilg, new UnaryAst(this));
+            }
+            else
+            {
+                body.Load(ilg);
+
+                switch (expressionType)
+                {
+                    case UnaryExpressionType.UnaryPlus:
+                        ilg.Emit(OpCodes.Nop);
+                        break;
+                    case UnaryExpressionType.Negate:
+                        ilg.Emit(OpCodes.Neg);
+                        break;
+                    case UnaryExpressionType.Not:
+                        if (RuntimeType == typeof(bool))
+                        {
+                            ilg.Emit(OpCodes.Ldc_I4_0);
+                            ilg.Emit(OpCodes.Ceq);
+                        }
+                        else
+                        {
+                            ilg.Emit(OpCodes.Not);
+                        }
+                        break;
+                    case UnaryExpressionType.Increment:
+                        TryEmitConstantOne(ilg, body.RuntimeType);
+                        ilg.Emit(OpCodes.Add);
+                        break;
+                    case UnaryExpressionType.Decrement:
+                        TryEmitConstantOne(ilg, body.RuntimeType);
+                        ilg.Emit(OpCodes.Sub);
+                        break;
+                    case UnaryExpressionType.IsFalse:
                         ilg.Emit(OpCodes.Ldc_I4_0);
                         ilg.Emit(OpCodes.Ceq);
-                    }
-                    else
-                    {
-                        ilg.Emit(OpCodes.Not);
-                    }
-                    break;
-                case UnaryExpressionType.Increment:
-                    TryEmitConstantOne(ilg, body.RuntimeType);
-                    ilg.Emit(OpCodes.Add);
-                    break;
-                case UnaryExpressionType.Decrement:
-                    TryEmitConstantOne(ilg, body.RuntimeType);
-                    ilg.Emit(OpCodes.Sub);
-                    break;
-                case UnaryExpressionType.IsFalse:
-                    ilg.Emit(OpCodes.Ldc_I4_0);
-                    ilg.Emit(OpCodes.Ceq);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
         private static Type AnalysisType(UnaryExpressionType expressionType, AstExpression body)
         {
             switch (expressionType)
             {
+
                 case UnaryExpressionType.UnaryPlus:
-                case UnaryExpressionType.Decrement:
                 case UnaryExpressionType.Increment:
+                case UnaryExpressionType.Decrement:
                     if (IsArithmetic(body.RuntimeType))
                     {
                         return body.RuntimeType;
@@ -95,6 +109,13 @@ namespace CodeArts.Emit.Expressions
                         return body.RuntimeType;
                     }
                     break;
+                case UnaryExpressionType.IncrementAssign:
+                case UnaryExpressionType.DecrementAssign:
+                    if (!body.CanWrite)
+                    {
+                        throw new AstException("表达式不可写!");
+                    }
+                    goto case UnaryExpressionType.Increment;
             }
 
             throw new InvalidOperationException($"“{body.RuntimeType}”不支持“{expressionType}”一元操作!");

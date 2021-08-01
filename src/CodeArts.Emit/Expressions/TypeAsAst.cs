@@ -29,8 +29,17 @@ namespace CodeArts.Emit.Expressions
         /// <param name="ilg">指令。</param>
         public override void Load(ILGenerator ilg)
         {
-            if (RuntimeType.IsNullable())
+            if (RuntimeType.IsValueType)
             {
+                var underlyingType = RuntimeType.IsNullable()
+                    ? Nullable.GetUnderlyingType(RuntimeType)
+                    : RuntimeType;
+
+                var local = ilg.DeclareLocal(RuntimeType);
+
+                var label = ilg.DefineLabel();
+                var leave = ilg.DefineLabel();
+
                 body.Load(ilg);
 
                 if (body.RuntimeType.IsValueType)
@@ -38,7 +47,31 @@ namespace CodeArts.Emit.Expressions
                     ilg.Emit(OpCodes.Box, body.RuntimeType);
                 }
 
-                ilg.Emit(OpCodes.Isinst, Nullable.GetUnderlyingType(RuntimeType));
+                ilg.Emit(OpCodes.Isinst, underlyingType);
+
+                ilg.Emit(OpCodes.Brtrue_S, label);
+
+                EmitUtils.EmitDefaultOfType(ilg, RuntimeType);
+
+                ilg.Emit(OpCodes.Stloc, local);
+
+                ilg.Emit(OpCodes.Br_S, leave);
+
+                ilg.MarkLabel(label);
+
+                body.Load(ilg);
+
+                if (body.RuntimeType.IsValueType)
+                {
+                    ilg.Emit(OpCodes.Box, body.RuntimeType);
+                }
+
+                ilg.Emit(OpCodes.Unbox_Any, RuntimeType);
+
+                ilg.Emit(OpCodes.Stloc, local);
+                ilg.MarkLabel(leave);
+
+                ilg.Emit(OpCodes.Ldloc, local);
             }
             else
             {

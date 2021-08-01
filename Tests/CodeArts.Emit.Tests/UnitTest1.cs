@@ -1,4 +1,3 @@
-using CodeArts.Emit.Expressions;
 using CodeArts.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -45,7 +44,37 @@ namespace CodeArts.Emit.Tests
 
             method.Append(Assign(b, Constant(GetExpression(entry => entry.Id))));
 
-            method.Append(Return(Condition(GreaterThanOrEqual(pI, pJ), pI, pJ)));
+            var switchAst = Switch(Constant(1));
+
+            switchAst.Case(Constant(1))
+                .Append(IncrementAssign(pI));
+
+            switchAst.Case(Constant(2))
+                .Append(AddAssign(pI, Constant(5)));
+
+            var constantAst2 = Constant(1, typeof(object));
+
+            var switchAst2 = Switch(constantAst2);
+
+            var stringAst = Variable(typeof(string));
+            var intAst = Variable(typeof(int));
+
+            switchAst2.Case(stringAst);
+            switchAst2.Case(intAst)
+                .Append(Assign(pI, intAst));
+
+            var switchAst3 = Switch(Constant("ABC"), DecrementAssign(pI), typeof(void));
+
+            switchAst3.Case(Constant("A"))
+                .Append(IncrementAssign(pI));
+
+            switchAst3.Case(Constant("B"))
+                .Append(AddAssign(pI, Constant(5)));
+
+            method.Append(switchAst)
+                .Append(switchAst2)
+                .Append(switchAst3)
+                .Append(Return(Condition(GreaterThanOrEqual(pI, pJ), pI, pJ)));
 
             var type = classType.CreateType();
 #if NET461
@@ -217,6 +246,7 @@ namespace CodeArts.Emit.Tests
                         break;
                 }
 
+
                 string str = "A";
 
                 switch (str)
@@ -231,17 +261,21 @@ namespace CodeArts.Emit.Tests
                         break;
                 }
 
-                //switch (value)
-                //{
-                //    case int i1:
-                //        i = i1;
-                //        break;
-                //    case string text:
-                //        i = 10;
-                //        break;
-                //    default:
-                //        break;
-                //}
+                object value = i;
+
+                switch (value)
+                {
+                    case int i1:
+                        i = i1;
+                        break;
+                    case string text:
+                        i = 10;
+                        break;
+                    default:
+                        break;
+                }
+
+                int? k = value is int ? (int?)value : default;
 
                 //var b = (i == 1) && i > 0;
 

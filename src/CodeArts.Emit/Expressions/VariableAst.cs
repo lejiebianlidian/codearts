@@ -10,14 +10,30 @@ namespace CodeArts.Emit.Expressions
     [DebuggerDisplay("{RuntimeType.Name} variable")]
     public sealed class VariableAst : AstExpression
     {
+        private readonly string name;
         private LocalBuilder local;
 
         /// <summary>
         /// 构造函数。
         /// </summary>
-        /// <param name="returnType">类型。</param>
-        public VariableAst(Type returnType) : base(returnType)
+        /// <param name="variableType">类型。</param>
+        public VariableAst(Type variableType) : base(variableType)
         {
+        }
+
+        /// <summary>
+        /// 构造函数。
+        /// </summary>
+        /// <param name="variableType">类型。</param>
+        /// <param name="name">变量名称。</param>
+        public VariableAst(Type variableType, string name) : base(variableType)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                throw new ArgumentException($"“{nameof(name)}”不能为 null 或空。", nameof(name));
+            }
+
+            this.name = name;
         }
 
         /// <summary>
@@ -34,6 +50,11 @@ namespace CodeArts.Emit.Expressions
             if (local is null)
             {
                 local = ilg.DeclareLocal(RuntimeType);
+
+                if (name?.Length > 0)
+                {
+                    local.SetLocalSymInfo(name);
+                }
             }
 
             ilg.Emit(OpCodes.Ldloc, local);
@@ -51,6 +72,11 @@ namespace CodeArts.Emit.Expressions
             if (local is null)
             {
                 local = ilg.DeclareLocal(RuntimeType);
+
+                if (name?.Length > 0)
+                {
+                    local.SetLocalSymInfo(name);
+                }
             }
 
             ilg.Emit(OpCodes.Stloc, local);
