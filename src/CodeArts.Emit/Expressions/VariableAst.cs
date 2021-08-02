@@ -10,7 +10,6 @@ namespace CodeArts.Emit.Expressions
     [DebuggerDisplay("{RuntimeType.Name} variable")]
     public sealed class VariableAst : AstExpression
     {
-        private readonly string name;
         private LocalBuilder local;
 
         /// <summary>
@@ -20,7 +19,8 @@ namespace CodeArts.Emit.Expressions
         public VariableAst(Type variableType) : base(variableType)
         {
         }
-
+#if NET40_OR_GREATER
+        private readonly string name;
         /// <summary>
         /// 构造函数。
         /// </summary>
@@ -35,6 +35,7 @@ namespace CodeArts.Emit.Expressions
 
             this.name = name;
         }
+#endif
 
         /// <summary>
         /// 是否可写。
@@ -50,11 +51,12 @@ namespace CodeArts.Emit.Expressions
             if (local is null)
             {
                 local = ilg.DeclareLocal(RuntimeType);
-
+#if NET40_OR_GREATER
                 if (name?.Length > 0)
                 {
                     local.SetLocalSymInfo(name);
                 }
+#endif
             }
 
             ilg.Emit(OpCodes.Ldloc, local);
@@ -65,7 +67,7 @@ namespace CodeArts.Emit.Expressions
         /// </summary>
         /// <param name="ilg">指令。</param>
         /// <param name="value">值。</param>
-        protected override void AssignCore(ILGenerator ilg, AstExpression value)
+        protected override void Assign(ILGenerator ilg, AstExpression value)
         {
             value.Load(ilg);
 
@@ -73,10 +75,12 @@ namespace CodeArts.Emit.Expressions
             {
                 local = ilg.DeclareLocal(RuntimeType);
 
+#if NET40_OR_GREATER
                 if (name?.Length > 0)
                 {
                     local.SetLocalSymInfo(name);
                 }
+#endif
             }
 
             ilg.Emit(OpCodes.Stloc, local);

@@ -143,7 +143,8 @@ namespace CodeArts.Emit.Expressions
         {
             if (expressionType < BinaryExpressionType.OrElse && (expressionType & BinaryExpressionType.Add) == 0)
             {
-                left.Assign(ilg, new BinaryAst(this));
+                Assign(left, new BinaryAst(this))
+                    .Load(ilg);
             }
             else
             {
@@ -339,12 +340,12 @@ namespace CodeArts.Emit.Expressions
 
         private static bool IsInteger(Type type)
         {
-            if (type.IsEnum || type.IsNullable())
+            if (type.IsNullable())
             {
                 return false;
             }
 
-            switch (Type.GetTypeCode(type))
+            switch (Type.GetTypeCode(type.IsEnum ? Enum.GetUnderlyingType(type) : type))
             {
                 case TypeCode.Byte:
                 case TypeCode.SByte:
@@ -362,12 +363,12 @@ namespace CodeArts.Emit.Expressions
 
         private static bool IsIntegerOrBool(Type type)
         {
-            if (type.IsEnum || type.IsNullable())
+            if (type.IsNullable())
             {
                 return false;
             }
 
-            switch (Type.GetTypeCode(type))
+            switch (Type.GetTypeCode(type.IsEnum ? Enum.GetUnderlyingType(type) : type))
             {
                 case TypeCode.Int64:
                 case TypeCode.Int32:
@@ -386,12 +387,12 @@ namespace CodeArts.Emit.Expressions
 
         private static bool IsFloatingPoint(Type type)
         {
-            if (type.IsEnum || type.IsNullable())
+            if (type.IsNullable())
             {
                 return false;
             }
 
-            switch (Type.GetTypeCode(type))
+            switch (Type.GetTypeCode(type.IsEnum ? Enum.GetUnderlyingType(type) : type))
             {
                 case TypeCode.Single:
                 case TypeCode.Double:
@@ -403,12 +404,12 @@ namespace CodeArts.Emit.Expressions
 
         private static bool IsUnsigned(Type type)
         {
-            if (type.IsEnum || type.IsNullable())
+            if (type.IsNullable())
             {
                 return false;
             }
 
-            switch (Type.GetTypeCode(type))
+            switch (Type.GetTypeCode(type.IsEnum ? Enum.GetUnderlyingType(type) : type))
             {
                 case TypeCode.Byte:
                 case TypeCode.UInt16:
@@ -423,12 +424,12 @@ namespace CodeArts.Emit.Expressions
 
         private static bool IsArithmetic(Type type)
         {
-            if (type.IsEnum || type.IsNullable())
+            if (type.IsNullable())
             {
                 return false;
             }
 
-            switch (Type.GetTypeCode(type))
+            switch (Type.GetTypeCode(type.IsEnum ? Enum.GetUnderlyingType(type) : type))
             {
                 case TypeCode.Int16:
                 case TypeCode.Int32:

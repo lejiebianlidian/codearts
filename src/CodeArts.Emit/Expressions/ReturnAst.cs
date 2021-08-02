@@ -20,6 +20,13 @@ namespace CodeArts.Emit.Expressions
         private readonly AstExpression body;
 
         /// <summary>
+        /// 无返回值（自动清除栈顶数据）。
+        /// </summary>
+        public static readonly ReturnAst Void = new ReturnAst(typeof(void));
+
+        private ReturnAst(Type returnType) : base(returnType) => IsEmpty = true;
+
+        /// <summary>
         /// 构造函数。
         /// </summary>
         public ReturnAst() : base(AnyDynamicType) => IsEmpty = true;
@@ -81,6 +88,10 @@ namespace CodeArts.Emit.Expressions
             if (!IsEmpty)
             {
                 body.Load(ilg);
+            }
+            else if (RuntimeType == typeof(void))
+            {
+                ilg.Emit(OpCodes.Nop);
             }
 
             ilg.Emit(OpCodes.Ret);

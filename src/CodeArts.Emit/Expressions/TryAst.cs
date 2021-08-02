@@ -105,7 +105,8 @@ namespace CodeArts.Emit.Expressions
                 }
                 else
                 {
-                    variable.Assign(ilg, new CatchBlockAst(exceptionType));
+                    Assign(variable, new CatchBlockAst(exceptionType))
+                        .Load(ilg);
                 }
 
                 ilg.Emit(OpCodes.Nop);
@@ -226,7 +227,7 @@ namespace CodeArts.Emit.Expressions
             {
                 foreach (var catchAst in catchAsts)
                 {
-                    EmitVoid(catchAst, ilg, label);
+                    FlowControl(catchAst, ilg, label);
                 }
 
                 ilg.Emit(OpCodes.Nop);
@@ -236,7 +237,7 @@ namespace CodeArts.Emit.Expressions
             {
                 ilg.BeginFinallyBlock();
 
-                EmitVoid(finallyAst, ilg, label);
+                FlowControl(finallyAst, ilg, label);
 
                 ilg.Emit(OpCodes.Nop);
             }
@@ -260,7 +261,7 @@ namespace CodeArts.Emit.Expressions
             {
                 foreach (var catchAst in catchAsts)
                 {
-                    Emit(catchAst, ilg, variable, label);
+                    FlowControl(catchAst, ilg, variable, label);
                 }
 
                 ilg.Emit(OpCodes.Nop);
@@ -270,7 +271,7 @@ namespace CodeArts.Emit.Expressions
             {
                 ilg.BeginFinallyBlock();
 
-                EmitVoid(finallyAst, ilg, label);
+                FlowControl(finallyAst, ilg, label);
 
                 ilg.Emit(OpCodes.Nop);
             }

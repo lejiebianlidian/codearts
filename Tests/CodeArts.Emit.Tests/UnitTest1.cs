@@ -137,9 +137,7 @@ namespace CodeArts.Emit.Tests
 
             method.Append(Assign(whereLambda, Call(lamdaMethod, equalMethod, variable_variables)));
 
-            method.Append(Void());
-
-            method.Append(Return());
+            method.Append(ReturnVoid());
 
             classType.CreateType();
 #if NET461
@@ -272,6 +270,21 @@ namespace CodeArts.Emit.Tests
                         i = 10;
                         break;
                     default:
+                        break;
+                }
+
+                DateTimeKind timeKind = (DateTimeKind)i;
+
+                switch (timeKind)
+                {
+                    case DateTimeKind.Local:
+                        i++;
+                        break;
+                    case DateTimeKind.Unspecified:
+                        i += 5;
+                        break;
+                    default:
+                        i--;
                         break;
                 }
 

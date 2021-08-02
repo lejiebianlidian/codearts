@@ -62,6 +62,12 @@ namespace CodeArts.Emit.Expressions
                 {
                     if (RuntimeType == typeof(void))
                     {
+                        //? 无返回值（模块原本就是无返回值，避免多次清除栈顶数据）。
+                        if (code.RuntimeType == typeof(void))
+                        {
+                            code = new ReturnAst();
+                        }
+
                         goto label_core;
                     }
 
@@ -146,7 +152,7 @@ namespace CodeArts.Emit.Expressions
                 {
                     i += 2; //? 一次处理两条记录。
 
-                    EmitVoid(code, ilg, label);
+                    FlowControl(code, ilg, label);
 
                     ilg.Emit(OpCodes.Leave_S, label);
                 }
@@ -154,7 +160,7 @@ namespace CodeArts.Emit.Expressions
                 {
                     i++;
 
-                    EmitVoid(code, ilg, label);
+                    FlowControl(code, ilg, label);
                 }
             }
 
@@ -171,7 +177,7 @@ namespace CodeArts.Emit.Expressions
 
             ilg.Emit(OpCodes.Nop);
 
-            EmitVoid(codeAst, ilg, label);
+            FlowControl(codeAst, ilg, label);
         }
 
         /// <summary>
@@ -235,13 +241,13 @@ namespace CodeArts.Emit.Expressions
 
                     if (returnAst.IsEmpty)
                     {
-                        Emit(code, ilg, local, label);
+                        FlowControl(code, ilg, local, label);
                     }
                     else
                     {
-                        EmitVoid(code, ilg, label);
+                        FlowControl(code, ilg, label);
 
-                        Emit(returnAst.Unbox(), ilg, local, label);
+                        FlowControl(returnAst.Unbox(), ilg, local, label);
                     }
 
                     if (len > i)
@@ -253,7 +259,7 @@ namespace CodeArts.Emit.Expressions
                 {
                     i++;
 
-                    EmitVoid(code, ilg, label);
+                    FlowControl(code, ilg, label);
                 }
             }
 
@@ -264,7 +270,7 @@ namespace CodeArts.Emit.Expressions
 
             ilg.Emit(OpCodes.Nop);
 
-            Emit(codeAst, ilg, local, label);
+            FlowControl(codeAst, ilg, local, label);
         }
 
         /// <summary>

@@ -8,12 +8,11 @@ namespace CodeArts.Emit.Expressions
     /// <summary>
     /// 流程。
     /// </summary>
-    /// <typeparam name="T">判断类型。</typeparam>
     public class SwitchAst : AstExpression
     {
         private readonly AstExpression defaultAst;
-        private readonly List<IPrivateCaseHandler> switchCases = new List<IPrivateCaseHandler>();
         private readonly AstExpression switchValue;
+        private readonly List<IPrivateCaseHandler> switchCases;
 
         private readonly Type switchValueType;
         private readonly MySwitchValueKind switchValueKind;
@@ -124,14 +123,16 @@ namespace CodeArts.Emit.Expressions
             }
             void IPrivateCaseHandler.Emit(ILGenerator ilg, MyVariableAst variable, LocalBuilder local, Label label)
             {
-                variableAst.Assign(ilg, TypeAs(variable, variableAst.RuntimeType));
+                Assign(variableAst, TypeAs(variable, variableAst.RuntimeType))
+                    .Load(ilg);
 
                 Emit(ilg, local, label);
             }
 
             void IPrivateCaseHandler.EmitVoid(ILGenerator ilg, MyVariableAst variable, Label label)
             {
-                variableAst.Assign(ilg, TypeAs(variable, variableAst.RuntimeType));
+                Assign(variableAst, TypeAs(variable, variableAst.RuntimeType))
+                    .Load(ilg);
 
                 EmitVoid(ilg, label);
             }
@@ -188,6 +189,19 @@ namespace CodeArts.Emit.Expressions
             public AstExpression Body { get; }
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="switchAst"></param>
+        protected SwitchAst(SwitchAst switchAst) : base(switchAst.RuntimeType)
+        {
+            defaultAst = switchAst.defaultAst;
+            switchValue = switchAst.switchValue;
+            switchCases = switchAst.switchCases;
+            switchValueType = switchAst.switchValueType;
+            switchValueKind = switchAst.switchValueKind;
+        }
+
         private SwitchAst(AstExpression switchValue, Type returnType) : base(returnType)
         {
             if (switchValue is null)
@@ -211,6 +225,8 @@ namespace CodeArts.Emit.Expressions
             {
                 switchValueKind = MySwitchValueKind.Equality;
             }
+
+            switchCases = new List<IPrivateCaseHandler>();
 
             this.switchValue = switchValue;
         }
@@ -402,7 +418,7 @@ namespace CodeArts.Emit.Expressions
                 return;
             }
 
-            EmitVoid(defaultAst, ilg, label);
+            FlowControl(defaultAst, ilg, label);
         }
 
         /// <summary>
@@ -469,7 +485,7 @@ namespace CodeArts.Emit.Expressions
                 return;
             }
 
-            Emit(defaultAst, ilg, local, label);
+            FlowControl(defaultAst, ilg, local, label);
         }
 
         /// <summary>

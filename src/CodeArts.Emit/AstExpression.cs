@@ -1,5 +1,6 @@
 ﻿using CodeArts.Emit.Expressions;
 using System;
+using System.Diagnostics;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -28,15 +29,19 @@ namespace CodeArts.Emit
         public abstract void Load(ILGenerator ilg);
 
         /// <summary>
-        /// 赋值。
+        /// 检查是否可以进行赋值运算。
         /// </summary>
-        /// <param name="ilg">指令。</param>
         /// <param name="value">值。</param>
-        public virtual void Assign(ILGenerator ilg, AstExpression value)
+        protected virtual bool AssignChecked(AstExpression value)
         {
             if (value is null)
             {
                 throw new ArgumentNullException(nameof(value));
+            }
+
+            if (!CanWrite)
+            {
+                return false;
             }
 
             var returnType = RuntimeType;
@@ -48,7 +53,7 @@ namespace CodeArts.Emit
 
             if (value is ThisAst)
             {
-                goto label_core;
+                return true;
             }
 
             var valueType = value.RuntimeType;
@@ -58,21 +63,53 @@ namespace CodeArts.Emit
                 throw new AstException("无返回值类型赋值不能用于赋值运算!");
             }
 
-            if (valueType != returnType && !returnType.IsAssignableFrom(valueType) && (valueType.IsByRef ? valueType.GetElementType() : valueType) != (returnType.IsByRef ? returnType.GetElementType() : returnType))
+            if (valueType == returnType || returnType.IsAssignableFrom(valueType))
             {
-                throw new AstException("值表达式类型和当前表达式类型不相同!");
+                return true;
             }
 
-        label_core:
+            if (valueType.IsByRef || returnType.IsByRef)
+            {
+                if (valueType.IsByRef)
+                {
+                    valueType = valueType.GetElementType();
+                }
 
-            if (CanWrite)
-            {
-                AssignCore(ilg, value);
+                if (returnType.IsByRef)
+                {
+                    returnType = returnType.GetElementType();
+                }
+
+                if (valueType == returnType || returnType.IsAssignableFrom(valueType))
+                {
+                    return true;
+                }
             }
-            else
+
+            if (valueType.IsEnum || returnType.IsEnum)
             {
-                throw new AstException("当前表达式不可写!");
+                if (valueType.IsEnum)
+                {
+                    valueType = Enum.GetUnderlyingType(valueType);
+                }
+
+                if (returnType.IsEnum)
+                {
+                    returnType = Enum.GetUnderlyingType(returnType);
+                }
+
+                if (valueType == returnType || returnType.IsAssignableFrom(valueType))
+                {
+                    return true;
+                }
             }
+
+            if (returnType.IsNullable())
+            {
+                return Enum.GetUnderlyingType(returnType) == valueType;
+            }
+
+            throw new AstException($"“{value.RuntimeType}”无法对类型“{RuntimeType}”赋值!");
         }
 
         /// <summary>
@@ -80,7 +117,7 @@ namespace CodeArts.Emit
         /// </summary>
         /// <param name="ilg">指令。</param>
         /// <param name="value">值。</param>
-        protected virtual void AssignCore(ILGenerator ilg, AstExpression value) => throw new NotImplementedException();
+        protected virtual void Assign(ILGenerator ilg, AstExpression value) => throw new NotSupportedException();
 
         /// <summary>
         /// 空表达式数组。
@@ -88,17 +125,68 @@ namespace CodeArts.Emit
         public static readonly AstExpression[] EmptyAsts = new AstExpression[0];
 
         #region 表达式模块
+
+        /// <summary>
+        /// 成员本身。
+        /// </summary>
+        [DebuggerDisplay("this")]
+        private class ThisAst : AstExpression
+        {
+            /// <summary>
+            /// 单例。
+            /// </summary>
+            public static ThisAst Instance = new ThisAst();
+
+            /// <summary>
+            /// 构造函数。
+            /// </summary>
+            private ThisAst() : base(typeof(object))
+            {
+            }
+
+            /// <summary>
+            /// 加载。
+            /// </summary>
+            /// <param name="ilg">指令。</param>
+            public override void Load(ILGenerator ilg)
+            {
+                ilg.Emit(OpCodes.Ldarg_0);
+            }
+        }
+
+        /// <summary>
+        /// 赋值。
+        /// </summary>
+        [DebuggerDisplay("{left} = {right}")]
+        private class AssignAst : AstExpression
+        {
+            private readonly AstExpression left;
+            private readonly AstExpression right;
+            public AssignAst(AstExpression left, AstExpression right) : base(right.RuntimeType)
+            {
+                this.left = left ?? throw new ArgumentNullException(nameof(left));
+
+                if (left.AssignChecked(right))
+                {
+                    this.right = right ?? throw new ArgumentNullException(nameof(right));
+                }
+                else
+                {
+                    throw new ArgumentException("表达式左侧只读!");
+                }
+            }
+
+            public override void Load(ILGenerator ilg) => left.Assign(ilg, Convert(right, RuntimeType));
+        }
         private class VBlockAst : BlockAst
         {
             private readonly LocalBuilder variable;
             private readonly Label label;
-
             public VBlockAst(BlockAst blockAst, LocalBuilder variable, Label label) : base(blockAst)
             {
                 this.variable = variable;
                 this.label = label;
             }
-
             protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
             protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
         }
@@ -107,16 +195,40 @@ namespace CodeArts.Emit
         {
             private readonly LocalBuilder variable;
             private readonly Label label;
-
             public VTryAst(TryAst tryAst, LocalBuilder variable, Label label) : base(tryAst)
             {
                 this.variable = variable;
                 this.label = label;
             }
-
             protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
             protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
         }
+
+        private class VSwitchAst : SwitchAst
+        {
+            private readonly LocalBuilder variable;
+            private readonly Label label;
+            public VSwitchAst(SwitchAst switchAst, LocalBuilder variable, Label label) : base(switchAst)
+            {
+                this.variable = variable;
+                this.label = label;
+            }
+            protected override void Emit(ILGenerator ilg) => Emit(ilg, variable, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
+        }
+
+        private class VoidSwitchAst : SwitchAst
+        {
+            private readonly Label label;
+
+            public VoidSwitchAst(SwitchAst blockAst, Label label) : base(blockAst)
+            {
+                this.label = label;
+            }
+            protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
+            protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
+        }
+
 
         private class VoidBlockAst : BlockAst
         {
@@ -126,7 +238,6 @@ namespace CodeArts.Emit
             {
                 this.label = label;
             }
-
             protected override void Emit(ILGenerator ilg) => EmitVoid(ilg, label);
             protected override void EmitVoid(ILGenerator ilg) => EmitVoid(ilg, label);
         }
@@ -134,7 +245,6 @@ namespace CodeArts.Emit
         private class VoidTryAst : TryAst
         {
             private readonly Label label;
-
             public VoidTryAst(TryAst tryAst, Label label) : base(tryAst)
             {
                 this.label = label;
@@ -146,62 +256,78 @@ namespace CodeArts.Emit
         #endregion
 
         /// <summary>
-        /// 发行忽略返回值的表达式。
+        /// 流程控制模块使用：发行忽略返回值的表达式。
         /// </summary>
         /// <param name="node">表达式。</param>
         /// <param name="ilg">指令。</param>
         /// <param name="label">跳转目标。</param>
-        protected virtual void EmitVoid(AstExpression node, ILGenerator ilg, Label label)
+        public static void FlowControl(AstExpression node, ILGenerator ilg, Label label)
         {
-            if (node is TryAst tryAst)
+            switch (node)
             {
-                new VoidTryAst(tryAst, label)
-                    .Load(ilg);
-            }
-            else if (node is BlockAst blockAst)
-            {
-                new VoidBlockAst(blockAst, label)
+                case TryAst tryAst:
+                    new VoidTryAst(tryAst, label)
+                        .Load(ilg);
+                    break;
+                case BlockAst blockAst:
+                    new VoidBlockAst(blockAst, label)
+                        .Load(ilg);
+                    break;
+                case SwitchAst switchAst:
+                    new VoidSwitchAst(switchAst, label)
                      .Load(ilg);
-            }
-            else
-            {
-                node.Load(ilg);
+                    break;
+                default:
+                    node?.Load(ilg);
+                    break;
             }
         }
 
         /// <summary>
-        /// 发行忽略返回值的表达式。
+        /// 流程控制模块使用：发行表达式。
         /// </summary>
         /// <param name="node">表达式。</param>
         /// <param name="ilg">指令。</param>
         /// <param name="local">返回值存放的变量。</param>
         /// <param name="label">跳转目标。</param>
-        protected virtual void Emit(AstExpression node, ILGenerator ilg, LocalBuilder local, Label label)
+        public static void FlowControl(AstExpression node, ILGenerator ilg, LocalBuilder local, Label label)
         {
-            if (node is TryAst tryAst)
+            switch (node)
             {
-                new VTryAst(tryAst, local, label)
+                case TryAst tryAst:
+                    new VTryAst(tryAst, local, label)
                     .Load(ilg);
-            }
-            else if (node is BlockAst blockAst)
-            {
-                new VBlockAst(blockAst, local, label)
+                    break;
+                case BlockAst blockAst:
+                    new VBlockAst(blockAst, local, label)
                      .Load(ilg);
-            }
-            else if (node.RuntimeType == typeof(void))
-            {
-                node.Load(ilg);
-            }
-            else
-            {
-                node.Load(ilg);
+                    break;
+                case SwitchAst switchAst:
+                    new VSwitchAst(switchAst, local, label)
+                     .Load(ilg);
+                    break;
+                default:
+                    if (node is null)
+                    {
+                        break;
+                    }
 
-                if (EmitUtils.EqualSignatureTypes(node.RuntimeType, local.LocalType) || node.RuntimeType.IsAssignableFrom(local.LocalType))
-                {
-                    EmitUtils.EmitConvertToType(ilg, node.RuntimeType, local.LocalType, true);
+                    if (node.RuntimeType == typeof(void))
+                    {
+                        node.Load(ilg);
+                    }
+                    else
+                    {
+                        node.Load(ilg);
 
-                    ilg.Emit(OpCodes.Stloc, local);
-                }
+                        if (EmitUtils.EqualSignatureTypes(node.RuntimeType, local.LocalType) || node.RuntimeType.IsAssignableFrom(local.LocalType))
+                        {
+                            EmitUtils.EmitConvertToType(ilg, node.RuntimeType, local.LocalType, true);
+
+                            ilg.Emit(OpCodes.Stloc, local);
+                        }
+                    }
+                    break;
             }
         }
 
@@ -213,7 +339,7 @@ namespace CodeArts.Emit
         /// <summary>
         /// 当前上下文。
         /// </summary>
-        public static ThisAst This => ThisAst.Instance;
+        public static AstExpression This => ThisAst.Instance;
 
         /// <summary>
         /// 类型转换。
@@ -251,12 +377,15 @@ namespace CodeArts.Emit
         /// <param name="variableType">变量类型。</param>
         /// <returns></returns>
         public static VariableAst Variable(Type variableType) => new VariableAst(variableType);
+
+#if NET40_OR_GREATER
         /// <summary>
         /// 构造函数。
         /// </summary>
-        /// <param name="returnType">类型。</param>
+        /// <param name="variableType">类型。</param>
         /// <param name="name">变量名称。</param>
         public static VariableAst Variable(Type variableType, string name) => new VariableAst(variableType, name);
+#endif
 
         /// <summary>
         /// 类型是。
@@ -349,7 +478,7 @@ namespace CodeArts.Emit
         /// <param name="left">左表达式。</param>
         /// <param name="right">右表达式。</param>
         /// <returns></returns>
-        public static AssignAst Assign(AstExpression left, AstExpression right) => new AssignAst(left, right);
+        public static AstExpression Assign(AstExpression left, AstExpression right) => new AssignAst(left, right);
 
         /// <summary>
         /// 空合并运算符。
@@ -652,11 +781,11 @@ namespace CodeArts.Emit
         /// 流程（无返回值）。
         /// </summary>
         /// <param name="switchValue">判断依据。</param>
-        /// <returns></returns>
+        /// <returns><see cref="void"/></returns>
         public static SwitchAst Switch(AstExpression switchValue) => new SwitchAst(switchValue);
 
         /// <summary>
-        /// 流程(返回“<paramref name="defaultAst"/>.RuntimeType”类型)。
+        /// 流程(无返回值)。
         /// </summary>
         /// <param name="switchValue">判断依据。</param>
         /// <param name="defaultAst">默认流程。</param>
@@ -712,7 +841,7 @@ namespace CodeArts.Emit
         /// 调用方法。
         /// </summary>
         /// <param name="methodInfo">方法。</param>
-        /// <returns></returns>
+        /// <returns><paramref name="methodInfo"/>.ReturnType</returns>
         public static MethodCallAst Call(MethodInfo methodInfo) => new MethodCallAst(methodInfo);
 
         /// <summary>
@@ -720,7 +849,7 @@ namespace CodeArts.Emit
         /// </summary>
         /// <param name="methodInfo">方法。</param>
         /// <param name="arguments">方法参数。</param>
-        /// <returns></returns>
+        /// <returns><paramref name="methodInfo"/>.ReturnType</returns>
         public static MethodCallAst Call(MethodInfo methodInfo, params AstExpression[] arguments) => new MethodCallAst(methodInfo, arguments);
 
         /// <summary>
@@ -728,7 +857,7 @@ namespace CodeArts.Emit
         /// </summary>
         /// <param name="instanceAst">实例。</param>
         /// <param name="methodInfo">方法。</param>
-        /// <returns></returns>
+        /// <returns><paramref name="methodInfo"/>.ReturnType</returns>
         public static MethodCallAst Call(AstExpression instanceAst, MethodInfo methodInfo) => new MethodCallAst(instanceAst, methodInfo);
 
         /// <summary>
@@ -737,24 +866,24 @@ namespace CodeArts.Emit
         /// <param name="instanceAst">实例。</param>
         /// <param name="methodInfo">方法。</param>
         /// <param name="arguments">方法参数。</param>
-        /// <returns></returns>
+        /// <returns><paramref name="methodInfo"/>.ReturnType</returns>
         public static MethodCallAst Call(AstExpression instanceAst, MethodInfo methodInfo, params AstExpression[] arguments) => new MethodCallAst(instanceAst, methodInfo, arguments);
 
         /// <summary>
-        /// 调用静态方法。<see cref="MethodBase.Invoke(object, object[])"/>
+        /// 调用方法：返回“<paramref name="methodInfo"/>.ReturnType”。。<see cref="MethodBase.Invoke(object, object[])"/>
         /// </summary>
         /// <param name="methodInfo">方法。</param>
         /// <param name="arguments">参数<see cref="object"/>[]。</param>
-        /// <returns></returns>
+        /// <returns><paramref name="methodInfo"/>.ReturnType</returns>
         public static InvocationAst Invoke(MethodInfo methodInfo, AstExpression arguments) => new InvocationAst(methodInfo, arguments);
 
         /// <summary>
-        /// 调用方法。<see cref="MethodBase.Invoke(object, object[])"/>
+        /// 调用方法：返回“<paramref name="methodInfo"/>.ReturnType”。<see cref="MethodBase.Invoke(object, object[])"/>
         /// </summary>
         /// <param name="instanceAst">实例。</param>
         /// <param name="methodInfo">方法。</param>
         /// <param name="arguments">参数<see cref="object"/>[]。</param>
-        /// <returns></returns>
+        /// <returns><paramref name="methodInfo"/>.ReturnType</returns>
         public static InvocationAst Invoke(AstExpression instanceAst, MethodInfo methodInfo, AstExpression arguments) => new InvocationAst(instanceAst, methodInfo, arguments);
 
         /// <summary>
@@ -848,12 +977,6 @@ namespace CodeArts.Emit
         public static ParameterAst Paramter(Type paramterType, int position) => new ParameterAst(paramterType, position);
 
         /// <summary>
-        /// 清除当前堆载顶部的数据。
-        /// </summary>
-        /// <returns></returns>
-        public static VoidAst Void() => new VoidAst();
-
-        /// <summary>
         /// 将当前堆载顶部的数据返回。
         /// </summary>
         /// <returns></returns>
@@ -865,5 +988,11 @@ namespace CodeArts.Emit
         /// <param name="body">代码块。</param>
         /// <returns></returns>
         public static ReturnAst Return(AstExpression body) => new ReturnAst(body);
+
+        /// <summary>
+        /// 无返回值（自动清除栈顶数据）。
+        /// </summary>
+        /// <returns></returns>
+        public static ReturnAst ReturnVoid() => ReturnAst.Void;
     }
 }

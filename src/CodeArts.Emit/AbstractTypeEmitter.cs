@@ -183,7 +183,6 @@ namespace CodeArts.Emit
             typeEmitter.abstracts.Add(this);
         }
 
-
         private static readonly Regex NamingPattern = new Regex("[^0-9a-zA-Z]+", RegexOptions.Singleline | RegexOptions.Compiled);
         private static TypeBuilder DefineTypeBuilder(AbstractTypeEmitter typeEmitter, string name, TypeAttributes attributes, Type baseType, Type[] interfaces)
         {
@@ -402,7 +401,6 @@ namespace CodeArts.Emit
                 return builder;
             }
         }
-
 
         /// <summary>
         /// 静态构造函数。
@@ -1034,6 +1032,7 @@ namespace CodeArts.Emit
 
             return false;
         }
+
         private static bool HasGenericParameter(Type type, Type[] declaringTypes)
         {
             if (type.IsGenericParameter)

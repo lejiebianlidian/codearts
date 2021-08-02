@@ -973,7 +973,7 @@ namespace CodeArts.Emit
 
         private static bool TryEmitILConstant(ILGenerator ilg, object value, Type type)
         {
-            switch (Type.GetTypeCode(type))
+            switch (Type.GetTypeCode(type.IsEnum ? Enum.GetUnderlyingType(type) : type))
             {
                 case TypeCode.Boolean:
                     EmitBoolean(ilg, (bool)value);
@@ -1080,7 +1080,18 @@ namespace CodeArts.Emit
         {
             if (value is null)
             {
-                ilg.Emit(OpCodes.Ldnull);
+                if (valueType is null || valueType.IsClass)
+                {
+                    ilg.Emit(OpCodes.Ldnull);
+                }
+                else if (valueType.IsNullable())
+                {
+                    EmitDefaultOfType(ilg, valueType);
+                }
+                else
+                {
+                    throw new InvalidCastException($"无法将“null”转为值类型“{valueType}”!");
+                }
             }
             else
             {
@@ -1095,7 +1106,7 @@ namespace CodeArts.Emit
                         ilg.Emit(OpCodes.Ldtoken, type);
                         ilg.Emit(OpCodes.Call, GetTypeFromHandle);
 
-                        ilg.Emit(OpCodes.Castclass, typeof(Type));
+                        ilg.Emit(OpCodes.Castclass, valueType);
                         break;
                     case MethodInfo methodInfo:
                         Debug.Assert(methodInfo.DeclaringType != null);
@@ -1220,7 +1231,7 @@ namespace CodeArts.Emit
                                         ilg.Emit(OpCodes.Box, realType);
                                     }
                                 }
-                                else
+                                else if (valueType.IsNullable())
                                 {
                                     ilg.Emit(OpCodes.Newobj, valueType.GetConstructor(new Type[1] { underlyingType }));
                                 }
@@ -1322,7 +1333,6 @@ namespace CodeArts.Emit
             }
             else if (typeFrom.IsArray && typeTo.IsArray)
             {
-                // See DevDiv Bugs #94657.
                 EmitCastToType(ilg, typeFrom, typeTo);
             }
             else

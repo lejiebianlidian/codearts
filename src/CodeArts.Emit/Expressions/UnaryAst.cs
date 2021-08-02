@@ -36,7 +36,8 @@ namespace CodeArts.Emit.Expressions
         {
             if (expressionType < UnaryExpressionType.UnaryPlus && (expressionType & UnaryExpressionType.Increment) == 0)
             {
-                body.Assign(ilg, new UnaryAst(this));
+                Assign(body, new UnaryAst(this))
+                    .Load(ilg);
             }
             else
             {
@@ -123,12 +124,12 @@ namespace CodeArts.Emit.Expressions
 
         private static bool IsUnsignedInt(Type type)
         {
-            if (type.IsEnum || type.IsNullable())
+            if (type.IsNullable())
             {
                 return false;
             }
 
-            switch (Type.GetTypeCode(type))
+            switch (Type.GetTypeCode(type.IsEnum ? Enum.GetUnderlyingType(type) : type))
             {
                 case TypeCode.UInt16:
                 case TypeCode.UInt32:
@@ -141,12 +142,12 @@ namespace CodeArts.Emit.Expressions
 
         private static bool IsIntegerOrBool(Type type)
         {
-            if (type.IsEnum || type.IsNullable())
+            if (type.IsNullable())
             {
                 return false;
             }
 
-            switch (Type.GetTypeCode(type))
+            switch (Type.GetTypeCode(type.IsEnum ? Enum.GetUnderlyingType(type) : type))
             {
                 case TypeCode.Int64:
                 case TypeCode.Int32:
@@ -165,12 +166,12 @@ namespace CodeArts.Emit.Expressions
 
         private static bool IsArithmetic(Type type)
         {
-            if (type.IsEnum || type.IsNullable())
+            if (type.IsNullable())
             {
                 return false;
             }
 
-            switch (Type.GetTypeCode(type))
+            switch (Type.GetTypeCode(type.IsEnum ? Enum.GetUnderlyingType(type) : type))
             {
                 case TypeCode.Int16:
                 case TypeCode.Int32:
@@ -188,7 +189,7 @@ namespace CodeArts.Emit.Expressions
 
         private static void TryEmitConstantOne(ILGenerator ilg, Type type)
         {
-            switch (Type.GetTypeCode(type))
+            switch (Type.GetTypeCode(type.IsEnum ? Enum.GetUnderlyingType(type) : type))
             {
                 case TypeCode.Byte:
                     EmitUtils.EmitByte(ilg, 1);
