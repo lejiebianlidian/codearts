@@ -29,6 +29,7 @@
 	<ItemGroup Condition=" '$(TargetFramework)' == 'net40' Or '$(TargetFramework)' == 'net45' Or '$(TargetFramework)' == 'net461' ">
 		<Reference Include="System.Transactions" />
 		<PackageReference Include="EntityFramework" Version="6.4.4" />
+		<ProjectReference Include="..\CodeArts.DependencyInjection.Abstractions\CodeArts.DependencyInjection.Abstractions.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
